@@ -2,7 +2,7 @@
 
 A public Shiny app for exploring WALZ gas-exchange measurements without writing code. The app reads the public TREESILIENCE Google Drive folder directly, selects the newest uploaded CSV by Drive modification time, and shows the safely matched raw protocol below the timeseries.
 
-**Open the app:** [TREESILIENCE WALZ Explorer on Posit Connect Cloud](https://019f5fdb-4ee7-8f85-e70b-4cb949338901.share.connect.posit.cloud/)
+**Open the app:** [TREESILIENCE WALZ Explorer on Posit Connect Cloud](https://019f5fde-29be-21f2-10c2-6bbe1e477663.share.connect.posit.cloud/)
 
 No WALZ measurements, Google credentials, or thesis files are stored in this repository.
 
