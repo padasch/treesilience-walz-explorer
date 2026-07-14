@@ -1,65 +1,133 @@
 variable_display_label <- function(variable, units) {
-  label <- WALZ_VARIABLE_LABELS[[variable]]
-  if (is.null(label) || is.na(label)) {
+  label <- unname(WALZ_VARIABLE_LABELS[variable])
+  if (length(label) == 0L || is.na(label)) {
     label <- variable
   }
 
-  unit <- units[[variable]]
+  unit <- unname(units[variable])
+  if (length(unit) == 0L) {
+    unit <- NA_character_
+  }
   if (identical(variable, "White x T")) {
     unit <- "% of maximum light"
   }
 
-  if (is.null(unit) || is.na(unit) || !nzchar(trimws(unit)) || unit == "-") {
+  if (is.na(unit) || !nzchar(trimws(unit)) || unit == "-") {
     return(label)
   }
 
   sprintf("%s [%s]", label, unit)
 }
 
-measurement_long_data <- function(parsed) {
-  available <- intersect(WALZ_PLOT_VARIABLES, names(parsed$data))
-  if (length(available) == 0L) {
-    stop("None of the eight expected variables is available for plotting.", call. = FALSE)
+plottable_variables <- function(parsed) {
+  variables <- names(parsed$data)[vapply(parsed$data, is.numeric, logical(1))]
+  setdiff(variables, "Datetime")
+}
+
+plot_variable_choices <- function(parsed_runs) {
+  parsed_runs <- Filter(Negate(is.null), parsed_runs)
+  if (length(parsed_runs) == 0L) {
+    return(character())
   }
+
+  variables <- unique(unlist(
+    lapply(parsed_runs, plottable_variables),
+    use.names = FALSE
+  ))
+  labels <- vapply(variables, function(variable) {
+    source <- parsed_runs[[which(vapply(
+      parsed_runs,
+      function(parsed) variable %in% names(parsed$data),
+      logical(1)
+    ))[[1]]]]
+    variable_display_label(variable, source$units)
+  }, character(1))
+
+  stats::setNames(variables, labels)
+}
+
+empty_measurement_long <- function() {
+  data.frame(
+    Datetime = as.POSIXct(character(), tz = WALZ_TIMEZONE),
+    ElapsedMinutes = numeric(),
+    variable = character(),
+    value = numeric(),
+    panel = character(),
+    Run = character(),
+    hover = character(),
+    stringsAsFactors = FALSE
+  )
+}
+
+measurement_long_data <- function(
+    parsed,
+    variables = WALZ_PLOT_VARIABLES,
+    run_label = "Selected run") {
+  available <- intersect(variables, plottable_variables(parsed))
+  if (length(available) == 0L) {
+    return(empty_measurement_long())
+  }
+
+  valid_times <- parsed$data$Datetime[!is.na(parsed$data$Datetime)]
+  if (length(valid_times) == 0L) {
+    return(empty_measurement_long())
+  }
+  run_start <- min(valid_times)
 
   pieces <- lapply(available, function(variable) {
     data.frame(
       Datetime = parsed$data$Datetime,
+      ElapsedMinutes = as.numeric(difftime(
+        parsed$data$Datetime,
+        run_start,
+        units = "mins"
+      )),
       variable = variable,
       value = parsed$data[[variable]],
+      panel = variable_display_label(variable, parsed$units),
+      Run = run_label,
       stringsAsFactors = FALSE
     )
   })
   long <- do.call(rbind, pieces)
   long <- long[!is.na(long$Datetime) & !is.na(long$value), , drop = FALSE]
-
-  if (nrow(long) == 0L) {
-    stop("The expected variables contain no plottable numeric values.", call. = FALSE)
-  }
-
-  labels <- vapply(
-    available,
-    variable_display_label,
-    character(1),
-    units = parsed$units
-  )
-  long$panel <- factor(labels[long$variable], levels = labels)
   long$hover <- sprintf(
-    "%s<br>%s<br>Value: %s",
-    as.character(long$panel),
+    paste0(
+      "Run: %s<br>%s<br>Recorded: %s<br>",
+      "Elapsed: %.1f min<br>Value: %s"
+    ),
+    long$Run,
+    long$panel,
     format(long$Datetime, "%Y-%m-%d %H:%M:%S", tz = WALZ_TIMEZONE),
+    long$ElapsedMinutes,
     format(long$value, digits = 7, trim = TRUE)
   )
   long
 }
 
-state_long_data <- function(parsed) {
-  state_variables <- setdiff(intersect(WALZ_PLOT_VARIABLES, names(parsed$data)), "A")
+empty_state_long <- function() {
+  data.frame(
+    A = numeric(),
+    state = numeric(),
+    variable = character(),
+    Datetime = as.POSIXct(character(), tz = WALZ_TIMEZONE),
+    panel = character(),
+    Run = character(),
+    hover = character(),
+    stringsAsFactors = FALSE
+  )
+}
+
+state_long_data <- function(
+    parsed,
+    variables = WALZ_PLOT_VARIABLES,
+    run_label = "Selected run") {
+  state_variables <- setdiff(intersect(variables, plottable_variables(parsed)), "A")
   if (!"A" %in% names(parsed$data)) {
     stop("The A vs state view requires the variable A.", call. = FALSE)
   }
   if (length(state_variables) == 0L) {
-    stop("No state variables are available for the A vs state view.", call. = FALSE)
+    return(empty_state_long())
   }
 
   pieces <- lapply(state_variables, function(variable) {
@@ -68,6 +136,8 @@ state_long_data <- function(parsed) {
       state = parsed$data[[variable]],
       variable = variable,
       Datetime = parsed$data$Datetime,
+      panel = variable_display_label(variable, parsed$units),
+      Run = run_label,
       stringsAsFactors = FALSE
     )
   })
@@ -77,26 +147,29 @@ state_long_data <- function(parsed) {
     ,
     drop = FALSE
   ]
-
-  if (nrow(long) == 0L) {
-    stop("The A and state variables contain no paired numeric values.", call. = FALSE)
-  }
-
-  labels <- vapply(
-    state_variables,
-    variable_display_label,
-    character(1),
-    units = parsed$units
-  )
-  long$panel <- factor(labels[long$variable], levels = labels)
   long$hover <- sprintf(
-    "%s<br>%s<br>State: %s<br>A: %s",
-    as.character(long$panel),
+    "%s<br>Run: %s<br>%s<br>State: %s<br>A: %s",
     format(long$Datetime, "%Y-%m-%d %H:%M:%S", tz = WALZ_TIMEZONE),
+    long$Run,
+    long$panel,
     format(long$state, digits = 7, trim = TRUE),
     format(long$A, digits = 7, trim = TRUE)
   )
   long
+}
+
+panel_levels_for_variables <- function(variables, parsed_runs) {
+  vapply(variables, function(variable) {
+    sources <- which(vapply(
+      parsed_runs,
+      function(parsed) variable %in% names(parsed$data),
+      logical(1)
+    ))
+    if (length(sources) == 0L) {
+      return(variable)
+    }
+    variable_display_label(variable, parsed_runs[[sources[[1]]]]$units)
+  }, character(1))
 }
 
 fifteen_minute_breaks <- function(datetimes) {
@@ -114,6 +187,15 @@ fifteen_minute_breaks <- function(datetimes) {
   seq(start, end, by = "15 min")
 }
 
+fifteen_minute_elapsed_breaks <- function(elapsed_minutes) {
+  limits <- range(elapsed_minutes, na.rm = TRUE)
+  seq(
+    floor(limits[[1]] / 15) * 15,
+    ceiling(limits[[2]] / 15) * 15,
+    by = 15
+  )
+}
+
 walz_plot_theme <- function() {
   ggplot2::theme_minimal(base_size = 12) +
     ggplot2::theme(
@@ -124,6 +206,8 @@ walz_plot_theme <- function() {
       strip.background = ggplot2::element_rect(fill = "#eef4ed", colour = NA),
       axis.title = ggplot2::element_text(colour = "#34443a"),
       axis.text = ggplot2::element_text(colour = "#4b5563"),
+      legend.position = "bottom",
+      legend.text = ggplot2::element_text(size = 8),
       plot.margin = ggplot2::margin(8, 12, 8, 8)
     )
 }
@@ -140,26 +224,88 @@ plotly_controls <- function(widget) {
   )
 }
 
-make_timeseries_plot <- function(parsed, show_grid = FALSE) {
-  long <- measurement_long_data(parsed)
-  plot <- ggplot2::ggplot(
-    long,
-    ggplot2::aes(x = Datetime, y = value, text = hover, group = variable)
-  ) +
-    ggplot2::geom_line(linewidth = 0.55, colour = "#28754d", na.rm = TRUE) +
-    ggplot2::geom_point(size = 0.65, colour = "#1f5b3c", alpha = 0.75, na.rm = TRUE) +
-    ggplot2::facet_wrap(ggplot2::vars(panel), ncol = 2, scales = "free_y") +
-    ggplot2::labs(x = "Local time (Europe/Zurich)", y = NULL) +
-    walz_plot_theme()
-
-  if (isTRUE(show_grid)) {
-    plot <- plot + ggplot2::scale_x_datetime(
-      breaks = fifteen_minute_breaks(long$Datetime),
-      date_labels = "%H:%M"
-    )
-  } else {
-    plot <- plot + ggplot2::scale_x_datetime(date_labels = "%H:%M")
+make_timeseries_plot <- function(
+    parsed,
+    show_grid = FALSE,
+    variables = WALZ_PLOT_VARIABLES,
+    comparison = NULL,
+    run_labels = c("Selected run", "Overlay run")) {
+  if (length(variables) == 0L) {
+    stop("Select at least one numeric variable to draw the timeseries.", call. = FALSE)
   }
+
+  parsed_runs <- list(parsed)
+  if (!is.null(comparison)) {
+    parsed_runs <- c(parsed_runs, list(comparison))
+  }
+  run_labels <- rep_len(run_labels, length(parsed_runs))
+  pieces <- Map(
+    measurement_long_data,
+    parsed_runs,
+    MoreArgs = list(variables = variables),
+    run_label = run_labels
+  )
+  long <- do.call(rbind, pieces)
+  if (nrow(long) == 0L) {
+    stop("The selected variables contain no plottable numeric values.", call. = FALSE)
+  }
+
+  panel_levels <- panel_levels_for_variables(variables, parsed_runs)
+  long$panel <- factor(long$panel, levels = unique(panel_levels))
+  long$Run <- factor(long$Run, levels = run_labels)
+  overlay <- length(parsed_runs) == 2L
+
+  if (overlay) {
+    plot <- ggplot2::ggplot(
+      long,
+      ggplot2::aes(
+        x = ElapsedMinutes,
+        y = value,
+        text = hover,
+        colour = Run,
+        group = interaction(variable, Run)
+      )
+    ) +
+      ggplot2::geom_line(linewidth = 0.65, na.rm = TRUE) +
+      ggplot2::geom_point(size = 0.7, alpha = 0.68, na.rm = TRUE) +
+      ggplot2::scale_colour_manual(values = c("#28754d", "#bd5d38")) +
+      ggplot2::labs(
+        x = "Elapsed time from run start (minutes)",
+        y = NULL,
+        colour = "Measurement run"
+      )
+    if (isTRUE(show_grid)) {
+      plot <- plot + ggplot2::scale_x_continuous(
+        breaks = fifteen_minute_elapsed_breaks(long$ElapsedMinutes)
+      )
+    }
+  } else {
+    plot <- ggplot2::ggplot(
+      long,
+      ggplot2::aes(x = Datetime, y = value, text = hover, group = variable)
+    ) +
+      ggplot2::geom_line(linewidth = 0.55, colour = "#28754d", na.rm = TRUE) +
+      ggplot2::geom_point(
+        size = 0.65,
+        colour = "#1f5b3c",
+        alpha = 0.75,
+        na.rm = TRUE
+      ) +
+      ggplot2::labs(x = "Local time (Europe/Zurich)", y = NULL)
+    if (isTRUE(show_grid)) {
+      plot <- plot + ggplot2::scale_x_datetime(
+        breaks = fifteen_minute_breaks(long$Datetime),
+        date_labels = "%H:%M"
+      )
+    } else {
+      plot <- plot + ggplot2::scale_x_datetime(date_labels = "%H:%M")
+    }
+  }
+
+  plot <- plot +
+    ggplot2::facet_wrap(ggplot2::vars(panel), ncol = 2, scales = "free_y") +
+    walz_plot_theme() +
+    ggplot2::guides(colour = ggplot2::guide_legend(nrow = 2, byrow = TRUE))
 
   widget <- plotly::ggplotly(
     plot,
@@ -169,18 +315,71 @@ make_timeseries_plot <- function(parsed, show_grid = FALSE) {
   )
   plotly_controls(widget)
 }
-make_state_plot <- function(parsed) {
-  long <- state_long_data(parsed)
+
+make_state_plot <- function(
+    parsed,
+    variables = WALZ_PLOT_VARIABLES,
+    comparison = NULL,
+    run_labels = c("Selected run", "Overlay run")) {
+  state_variables <- setdiff(variables, "A")
+  if (length(state_variables) == 0L) {
+    stop(
+      "Select at least one state variable in addition to A for this view.",
+      call. = FALSE
+    )
+  }
+
+  parsed_runs <- list(parsed)
+  if (!is.null(comparison)) {
+    parsed_runs <- c(parsed_runs, list(comparison))
+  }
+  run_labels <- rep_len(run_labels, length(parsed_runs))
+  pieces <- Map(
+    state_long_data,
+    parsed_runs,
+    MoreArgs = list(variables = variables),
+    run_label = run_labels
+  )
+  long <- do.call(rbind, pieces)
+  if (nrow(long) == 0L) {
+    stop("The selected state variables contain no paired values with A.", call. = FALSE)
+  }
+
+  panel_levels <- panel_levels_for_variables(state_variables, parsed_runs)
+  long$panel <- factor(long$panel, levels = unique(panel_levels))
+  long$Run <- factor(long$Run, levels = run_labels)
+  overlay <- length(parsed_runs) == 2L
   a_label <- variable_display_label("A", parsed$units)
-  plot <- ggplot2::ggplot(
-    long,
-    ggplot2::aes(x = state, y = A, text = hover, group = 1)
-  ) +
-    ggplot2::geom_path(linewidth = 0.45, colour = "#6c8e75", alpha = 0.75) +
-    ggplot2::geom_point(size = 1.1, colour = "#28754d", alpha = 0.8) +
+
+  if (overlay) {
+    plot <- ggplot2::ggplot(
+      long,
+      ggplot2::aes(
+        x = state,
+        y = A,
+        text = hover,
+        colour = Run,
+        group = Run
+      )
+    ) +
+      ggplot2::geom_path(linewidth = 0.55, alpha = 0.7) +
+      ggplot2::geom_point(size = 1.05, alpha = 0.75) +
+      ggplot2::scale_colour_manual(values = c("#28754d", "#bd5d38")) +
+      ggplot2::labs(x = NULL, y = a_label, colour = "Measurement run")
+  } else {
+    plot <- ggplot2::ggplot(
+      long,
+      ggplot2::aes(x = state, y = A, text = hover, group = 1)
+    ) +
+      ggplot2::geom_path(linewidth = 0.45, colour = "#6c8e75", alpha = 0.75) +
+      ggplot2::geom_point(size = 1.1, colour = "#28754d", alpha = 0.8) +
+      ggplot2::labs(x = NULL, y = a_label)
+  }
+
+  plot <- plot +
     ggplot2::facet_wrap(ggplot2::vars(panel), ncol = 2, scales = "free_x") +
-    ggplot2::labs(x = NULL, y = a_label) +
-    walz_plot_theme()
+    walz_plot_theme() +
+    ggplot2::guides(colour = ggplot2::guide_legend(nrow = 2, byrow = TRUE))
 
   widget <- plotly::ggplotly(
     plot,

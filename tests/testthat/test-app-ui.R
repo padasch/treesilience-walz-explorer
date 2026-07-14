@@ -1,4 +1,4 @@
-test_that("source status, filename heading, and match notice render", {
+test_that("comparison controls, status, variables, and protocols render", {
   skip_if_not_installed("shiny")
   skip_if_not_installed("bslib")
 
@@ -6,53 +6,99 @@ test_that("source status, filename heading, and match notice render", {
   app_environment <- new.env(parent = globalenv())
   source("app.R", local = app_environment)
 
+  page_html <- htmltools::renderTags(app_environment$ui)$html
+  expect_lt(
+    regexpr("source_status", page_html, fixed = TRUE)[[1]],
+    regexpr("measurement_id", page_html, fixed = TRUE)[[1]]
+  )
+
   parsed <- read_walz_csv(fixture_path("walz_sample.csv"))
   modified <- as.POSIXct("2026-07-13 16:27:42", tz = "UTC")
   fake_index <- list(
     measurements = data.frame(
-      id = "measurement-id",
-      name = "20260713_1023_chamber_oak(area10)_postblackout.csv",
-      modified_time = modified,
-      modified_iso = "2026-07-13T16:27:42.000Z",
-      mime_type = "text/csv",
-      size = 1,
+      id = c("primary-id", "overlay-id"),
+      name = c(
+        "20260713_1023_chamber_oak(area10)_postblackout.csv",
+        "20260713_1023_chamber_prunus_area10_postblackout.csv"
+      ),
+      modified_time = c(modified, modified - 60),
+      modified_iso = c(
+        "2026-07-13T16:27:42.000Z",
+        "2026-07-13T16:26:42.000Z"
+      ),
+      mime_type = c("text/csv", "text/csv"),
+      size = c(1, 1),
       stringsAsFactors = FALSE
     ),
     protocols = data.frame(
-      id = "protocol-id",
-      name = "20260713_1023_chamber_oak(10).txt",
-      modified_time = modified,
-      modified_iso = "2026-07-13T16:27:42.000Z",
-      mime_type = "text/plain",
-      size = 1,
+      id = c("oak-protocol-id", "prunus-protocol-id"),
+      name = c(
+        "20260713_1023_chamber_oak(10).txt",
+        "20260713_1023_chamber_prunus_area10.txt"
+      ),
+      modified_time = c(modified, modified),
+      modified_iso = c(
+        "2026-07-13T16:27:42.000Z",
+        "2026-07-13T16:27:42.000Z"
+      ),
+      mime_type = c("text/plain", "text/plain"),
+      size = c(1, 1),
       stringsAsFactors = FALSE
     ),
     refreshed_at = modified
   )
 
   app_environment$list_walz_drive <- function(root_id) fake_index
-  app_environment$load_remote_measurement <- function(record) parsed
+  app_environment$load_remote_measurement <- function(record) {
+    value <- parsed
+    if (record$id[[1]] == "overlay-id") {
+      value$data$Datetime <- value$data$Datetime + (24 * 60 * 60)
+      value$data$A <- value$data$A + 0.5
+    }
+    value
+  }
   app_environment$load_remote_protocol <- function(record) "Set CO2 = 440"
 
   shiny::testServer(app_environment$server, {
     session$flushReact()
     session$setInputs(
-      measurement_id = "measurement-id",
+      measurement_id = "primary-id",
+      overlay_enabled = FALSE,
       show_grid = FALSE
     )
     session$flushReact()
 
     expect_match(output$source_status$html, "<dl", fixed = TRUE)
+    expect_match(output$variable_selector$html, "value=\"Tcuv\"", fixed = TRUE)
+    expect_match(output$variable_selector$html, "value=\"Tleaf\"", fixed = TRUE)
+    expect_match(output$variable_selector$html, "value=\"Area\"", fixed = TRUE)
+
+    session$setInputs(
+      overlay_enabled = TRUE,
+      comparison_id = "overlay-id",
+      plot_variables = c("A", "Tcuv", "PARtop"),
+      show_grid = TRUE
+    )
+    session$flushReact()
+
+    expect_match(output$source_status$html, "Overlay upload modified", fixed = TRUE)
     expect_match(
       output$selected_file_heading$html,
       "20260713_1023_chamber_oak(area10)_postblackout.csv",
       fixed = TRUE
     )
     expect_match(
-      output$protocol_panel$html,
-      "No fuzzy matching was used",
+      output$selected_file_heading$html,
+      "20260713_1023_chamber_prunus_area10_postblackout.csv",
       fixed = TRUE
     )
-    expect_match(output$protocol_panel$html, "Protocol match:", fixed = TRUE)
+    expect_match(output$timeseries_alerts$html, "elapsed minute zero", fixed = TRUE)
+    expect_match(output$protocol_panel$html, "Primary measurement protocol", fixed = TRUE)
+    expect_match(output$protocol_panel$html, "Overlay measurement protocol", fixed = TRUE)
+    expect_match(output$protocol_panel$html, "No fuzzy matching was used", fixed = TRUE)
+    expect_null(timeseries_widget_result()$error)
+    expect_s3_class(timeseries_widget_result()$value, "plotly")
+    expect_null(state_widget_result()$error)
+    expect_s3_class(state_widget_result()$value, "plotly")
   })
 })

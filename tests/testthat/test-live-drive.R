@@ -13,12 +13,17 @@ test_that("the public Drive source has the validated WALZ structure and files", 
 
   index <- list_walz_drive(WALZ_DEFAULT_DRIVE_FOLDER_ID)
 
-  expect_equal(nrow(index$measurements), 5L)
-  expect_equal(nrow(index$protocols), 4L)
+  expect_gte(nrow(index$measurements), 5L)
+  expect_gte(nrow(index$protocols), 4L)
   expect_equal(
-    index$measurements$name[[1]],
-    "20260713_1023_chamber_oak(area10)_postblackout.csv"
+    index$measurements$modified_time[[1]],
+    max(index$measurements$modified_time)
   )
+  expect_true(all(
+    diff(as.numeric(index$measurements$modified_time)) <= 0
+  ))
+  expect_true(all(grepl("\\.csv$", index$measurements$name, ignore.case = TRUE)))
+  expect_true(all(grepl("\\.txt$", index$protocols$name, ignore.case = TRUE)))
   expect_false(any(grepl("\\.txt$", index$measurements$name, ignore.case = TRUE)))
   expect_false(any(grepl("lightFlucScript_oak\\(witharea10\\)$", index$measurements$name)))
 

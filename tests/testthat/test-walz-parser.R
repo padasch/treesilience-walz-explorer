@@ -2,7 +2,7 @@ test_that("WALZ CSVs are parsed with units and Zurich timestamps", {
   parsed <- read_walz_csv(fixture_path("walz_sample.csv"))
 
   expect_equal(parsed$row_count, 3L)
-  expect_equal(parsed$column_count, 17L)
+  expect_equal(parsed$column_count, 18L)
   expect_equal(parsed$missing_variables, character())
   expect_true(inherits(parsed$data$Datetime, "POSIXct"))
   expect_equal(attr(parsed$data$Datetime, "tzone"), WALZ_TIMEZONE)

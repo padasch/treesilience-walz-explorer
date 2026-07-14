@@ -31,8 +31,15 @@ body {
 
 .app-introduction p,
 .sidebar-intro,
-.muted-status {
+.muted-status,
+.control-help {
   color: var(--walz-muted);
+}
+
+.control-help {
+  font-size: 0.78rem;
+  line-height: 1.35;
+  margin-top: -0.35rem;
 }
 
 .selected-file-banner {
@@ -62,6 +69,40 @@ body {
   color: var(--walz-ink);
   font-size: 1rem;
   margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.selected-file-overlay {
+  border-top: 1px solid #cbdacb;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+}
+
+.variable-selector {
+  border-bottom: 1px solid var(--walz-border);
+  border-top: 1px solid var(--walz-border);
+  margin: 0.8rem 0 1rem;
+  padding: 0.9rem 0 0.45rem;
+}
+
+.variable-selector .control-label {
+  color: var(--walz-ink);
+  font-weight: 700;
+}
+
+.variable-selector .shiny-options-group {
+  column-count: 2;
+  column-gap: 1rem;
+  max-height: 25rem;
+  overflow-y: auto;
+  padding-right: 0.35rem;
+}
+
+.variable-selector .checkbox {
+  break-inside: avoid;
+  display: block;
+  font-size: 0.8rem;
+  margin-top: 0;
   overflow-wrap: anywhere;
 }
 
@@ -137,6 +178,13 @@ body {
   padding: 0.85rem 1rem 0;
 }
 
+.protocol-measurement-source {
+  color: var(--walz-muted);
+  font-size: 0.82rem;
+  margin: 0.85rem 1rem 0;
+  overflow-wrap: anywhere;
+}
+
 .protocol-filename {
   color: var(--walz-ink);
   font-weight: 700;
@@ -173,6 +221,10 @@ body {
 }
 
 @media (max-width: 700px) {
+  .variable-selector .shiny-options-group {
+    column-count: 1;
+  }
+
   .protocol-content {
     font-size: 0.7rem;
     margin-inline: 0.5rem;

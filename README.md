@@ -1,6 +1,6 @@
 # TREESILIENCE WALZ Explorer
 
-A public Shiny app for exploring WALZ gas-exchange measurements without writing code. The app reads the public TREESILIENCE Google Drive folder directly, selects the newest uploaded CSV by Drive modification time, and shows the safely matched raw protocol below the timeseries.
+A public Shiny app for exploring WALZ gas-exchange measurements without writing code. The app reads the public TREESILIENCE Google Drive folder directly, selects the newest uploaded CSV by Drive modification time, and shows the safely matched raw protocols below the timeseries.
 
 **Open the app:** [TREESILIENCE WALZ Explorer on Posit Connect Cloud](https://019f5fde-29be-21f2-10c2-6bbe1e477663.share.connect.posit.cloud/)
 
@@ -8,10 +8,12 @@ No WALZ measurements, Google credentials, or thesis files are stored in this rep
 
 ## What the app shows
 
-- Interactive timeseries panels for `A`, `Tleaf`, `VPD`, `rh`, `ca`, `ci`, `White x T`, and `PARtop`
-- A second interactive **A vs state** view
+- Interactive timeseries panels with every numeric CSV variable available as a checkbox
+- Defaults for `A`, `Tcuv`, `VPD`, `rh`, `ca`, `ci`, `White x T`, and `PARtop`
+- An optional two-run overlay aligned at elapsed minute zero, with original timestamps retained in hover text
+- A second interactive **A vs state** view controlled by the same variable checkboxes
 - Plotly zoom, pan, hover, line drawing, freehand drawing, erasing, and an optional 15-minute time grid
-- The raw matched protocol TXT file, displayed as escaped text
+- The raw matched protocol TXT file for each displayed run, shown as escaped text
 - Persistent warnings for Drive failures, malformed CSV files, missing variables, and missing or ambiguous protocols
 
 The [public Google Drive folder](https://drive.google.com/drive/folders/1wC9zXLEWQe4z7jBxfBfPRiVBuPJiF8vE) must contain direct child folders named `measurements` and `protocols`. Only `.csv` files in `measurements` and `.txt` files in `protocols` are listed.

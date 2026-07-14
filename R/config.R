@@ -1,12 +1,13 @@
 WALZ_DEFAULT_DRIVE_FOLDER_ID <- "1wC9zXLEWQe4z7jBxfBfPRiVBuPJiF8vE"
 WALZ_TIMEZONE <- "Europe/Zurich"
 WALZ_PLOT_VARIABLES <- c(
-  "A", "Tleaf", "VPD", "rh", "ca", "ci", "White x T", "PARtop"
+  "A", "Tcuv", "VPD", "rh", "ca", "ci", "White x T", "PARtop"
 )
 
 WALZ_VARIABLE_LABELS <- c(
   A = "Net CO2 assimilation",
   Tleaf = "Leaf temperature",
+  Tcuv = "Cuvette temperature",
   VPD = "Vapour pressure deficit",
   rh = "Relative humidity",
   ca = "Ambient CO2",
