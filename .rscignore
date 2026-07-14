@@ -1,0 +1,6 @@
+.git
+.Rlib
+tests
+.Rprofile
+README.md
+.DS_Store

@@ -1,0 +1,6 @@
+"Storing Interval =","005/020"
+"Set Flow =","900"
+"Inside Fan =","4"
+"Set CO2 =","440"
+"Set Tcuv =","22.0"
+"Set H2O(ppm) =","15000"

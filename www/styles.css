@@ -1,0 +1,146 @@
+:root {
+  --walz-green: #28754d;
+  --walz-ink: #243228;
+  --walz-muted: #617067;
+  --walz-border: #dce3dc;
+}
+
+body {
+  background: #f7f8f4;
+}
+
+.app-kicker {
+  display: block;
+  color: #5f7566;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  line-height: 1.1;
+}
+
+.app-introduction {
+  margin: 0.25rem 0 1rem;
+  max-width: 850px;
+}
+
+.app-introduction h2 {
+  color: var(--walz-ink);
+  font-size: clamp(1.4rem, 2vw, 2rem);
+  margin-bottom: 0.3rem;
+}
+
+.app-introduction p,
+.sidebar-intro,
+.muted-status {
+  color: var(--walz-muted);
+}
+
+.sidebar .btn {
+  width: 100%;
+  margin-bottom: 0.75rem;
+}
+
+.drive-link {
+  color: var(--walz-green);
+  display: inline-block;
+  font-weight: 600;
+  margin-top: 0.7rem;
+}
+
+.source-details {
+  display: grid;
+  font-size: 0.82rem;
+  grid-template-columns: minmax(0, 1fr);
+  margin-bottom: 0;
+}
+
+.source-details dt {
+  color: var(--walz-muted);
+  font-weight: 600;
+  margin-top: 0.45rem;
+}
+
+.source-details dd {
+  color: var(--walz-ink);
+  margin-bottom: 0;
+  overflow-wrap: anywhere;
+}
+
+.walz-alert {
+  align-items: flex-start;
+  border: 1px solid;
+  border-radius: 0.55rem;
+  display: flex;
+  gap: 0.65rem;
+  margin: 0.7rem 0;
+  padding: 0.8rem 0.9rem;
+}
+
+.walz-alert-warning {
+  background: #fff8df;
+  border-color: #ead48a;
+  color: #6c5715;
+}
+
+.walz-alert-danger {
+  background: #fff0ef;
+  border-color: #e9aaa5;
+  color: #7c2d28;
+}
+
+.walz-alert-info {
+  background: #edf6f1;
+  border-color: #a9cdb8;
+  color: #24543a;
+}
+
+.protocol-card {
+  border-color: var(--walz-border);
+  margin-top: 1.25rem;
+}
+
+.protocol-heading {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  padding: 0.85rem 1rem 0;
+}
+
+.protocol-filename {
+  color: var(--walz-ink);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.match-method {
+  background: #e8f1e9;
+  border-radius: 999px;
+  color: #376046;
+  font-size: 0.78rem;
+  padding: 0.2rem 0.55rem;
+}
+
+.protocol-content {
+  background: #fbfcfa;
+  border: 1px solid var(--walz-border);
+  border-radius: 0.4rem;
+  color: #26372c;
+  font-size: 0.8rem;
+  margin: 0.85rem 1rem 1rem;
+  max-height: 36rem;
+  overflow: auto;
+  padding: 1rem;
+  white-space: pre-wrap;
+}
+
+.plotly.html-widget {
+  min-height: 600px;
+}
+
+@media (max-width: 700px) {
+  .protocol-content {
+    font-size: 0.7rem;
+    margin-inline: 0.5rem;
+  }
+}

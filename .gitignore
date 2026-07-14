@@ -1,0 +1,8 @@
+.Rlib/
+.Rproj.user/
+.Rhistory
+.RData
+.Ruserdata
+.Renviron
+rsconnect/
+.DS_Store
