@@ -56,7 +56,7 @@ ui <- bslib::page_sidebar(
   ),
   fillable = FALSE,
   sidebar = bslib::sidebar(
-    width = 340,
+    width = 510,
     shiny::p(
       class = "sidebar-intro",
       "Choose a WALZ run. The newest Drive upload is selected automatically."
@@ -96,6 +96,7 @@ ui <- bslib::page_sidebar(
       "The corresponding raw instrument protocol is shown below the timeseries when it can be matched safely."
     )
   ),
+  shiny::uiOutput("selected_file_heading"),
   bslib::navset_card_tab(
     id = "plot_view",
     title = NULL,
@@ -244,17 +245,34 @@ server <- function(input, output, session) {
 
     shiny::tagList(
       shiny::h5("Drive status"),
-      shiny::dl(
+      shiny::tags$dl(
         class = "source-details",
-        shiny::dt("Runs found"),
-        shiny::dd(nrow(index$measurements)),
-        shiny::dt("Protocols found"),
-        shiny::dd(nrow(index$protocols)),
-        shiny::dt("List refreshed"),
-        shiny::dd(format(index$refreshed_at, "%Y-%m-%d %H:%M:%S %Z")),
-        shiny::dt("Selected upload modified"),
-        shiny::dd(selected_modified)
+        shiny::tags$dt("Runs found"),
+        shiny::tags$dd(nrow(index$measurements)),
+        shiny::tags$dt("Protocols found"),
+        shiny::tags$dd(nrow(index$protocols)),
+        shiny::tags$dt("List refreshed"),
+        shiny::tags$dd(format(index$refreshed_at, "%Y-%m-%d %H:%M:%S %Z")),
+        shiny::tags$dt("Selected upload modified"),
+        shiny::tags$dd(selected_modified)
       )
+    )
+  })
+
+  output$selected_file_heading <- shiny::renderUI({
+    record <- selected_record()
+    if (is.null(record)) {
+      return(shiny::div(
+        class = "selected-file-banner selected-file-banner-empty",
+        shiny::span(class = "selected-file-label", "Measurement file"),
+        shiny::h3("No measurement selected")
+      ))
+    }
+
+    shiny::div(
+      class = "selected-file-banner",
+      shiny::span(class = "selected-file-label", "Showing measurement file"),
+      shiny::h3(record$name[[1]])
     )
   })
 
@@ -357,6 +375,7 @@ server <- function(input, output, session) {
         shiny::span(class = "protocol-filename", filename),
         shiny::span(class = "match-method", protocol$match$method)
       ),
+      alert_ui(protocol$match$message, "info"),
       shiny::tags$pre(class = "protocol-content", protocol$text)
     )
   })

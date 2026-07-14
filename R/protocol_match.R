@@ -58,7 +58,13 @@ match_protocol <- function(measurement_name, protocols) {
       "matched",
       protocols[exact, , drop = FALSE],
       "exact filename stem",
-      sprintf("Matched %s by exact filename stem.", protocols$name[[exact]])
+      sprintf(
+        paste0(
+          "Protocol match: %s has the same filename stem as the measurement ",
+          "(ignoring the .csv/.txt extension). No fuzzy matching was used."
+        ),
+        protocols$name[[exact]]
+      )
     ))
   }
 
@@ -75,7 +81,14 @@ match_protocol <- function(measurement_name, protocols) {
       "matched",
       protocols[candidates, , drop = FALSE],
       "unique timestamp prefix",
-      sprintf("Matched %s by unique timestamp prefix.", protocols$name[[candidates]])
+      sprintf(
+        paste0(
+          "Protocol match: %s is the only TXT protocol with the shared %s ",
+          "timestamp prefix. No fuzzy matching was used."
+        ),
+        protocols$name[[candidates]],
+        measurement_timestamp
+      )
     ))
   }
 
@@ -95,7 +108,12 @@ match_protocol <- function(measurement_name, protocols) {
         protocols[matched, , drop = FALSE],
         "timestamp and normalized descriptor",
         sprintf(
-          "Matched %s by timestamp and normalized descriptor.",
+          paste0(
+            "Protocol match: %s matched by the shared timestamp and an exact ",
+            "normalized descriptor. Normalization removes only known technical ",
+            "variants such as lightFlucScript, postblackout, and area annotations. ",
+            "No fuzzy matching was used."
+          ),
           protocols$name[[matched]]
         )
       ))

@@ -35,6 +35,36 @@ body {
   color: var(--walz-muted);
 }
 
+.selected-file-banner {
+  background: #eef4ed;
+  border: 1px solid #cbdacb;
+  border-left: 0.35rem solid var(--walz-green);
+  border-radius: 0.55rem;
+  margin: 0 0 1rem;
+  padding: 0.75rem 1rem;
+}
+
+.selected-file-banner-empty {
+  border-left-color: #8a968d;
+}
+
+.selected-file-label {
+  color: #5f7566;
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  margin-bottom: 0.2rem;
+  text-transform: uppercase;
+}
+
+.selected-file-banner h3 {
+  color: var(--walz-ink);
+  font-size: 1rem;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
 .sidebar .btn {
   width: 100%;
   margin-bottom: 0.75rem;
@@ -132,6 +162,10 @@ body {
   overflow: auto;
   padding: 1rem;
   white-space: pre-wrap;
+}
+
+.protocol-card > .walz-alert {
+  margin-inline: 1rem;
 }
 
 .plotly.html-widget {

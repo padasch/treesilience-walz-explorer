@@ -27,6 +27,7 @@ test_that("all current measurement names resolve to their intended protocol", {
     matched <- match_protocol(measurement, current_protocols)
     expect_equal(matched$status, "matched", info = measurement)
     expect_equal(matched$protocol$name[[1]], expectations[[measurement]], info = measurement)
+    expect_match(matched$message, "No fuzzy matching was used", fixed = TRUE)
   }
 })
 
@@ -39,6 +40,8 @@ test_that("exact stems take priority", {
 
   expect_equal(matched$status, "matched")
   expect_equal(matched$method, "exact filename stem")
+  expect_match(matched$message, "same filename stem", fixed = TRUE)
+  expect_match(matched$message, "No fuzzy matching was used", fixed = TRUE)
 })
 
 test_that("ambiguous and missing names never produce guesses", {
