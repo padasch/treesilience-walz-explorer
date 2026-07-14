@@ -73,3 +73,5 @@ rsconnect::writeManifest(appDir = ".", appPrimaryDoc = "app.R")
 ```
 
 Publish this GitHub repository as a Shiny application with `app.R` as its primary file and enable automatic publishing on pushes to `main`. Drive data updates remain independent of that publishing cycle.
+
+The production deployment is linked to this repository's `main` branch with automatic publishing on push enabled.
