@@ -15,6 +15,7 @@ test_that("comparison controls, status, variables, and protocols render", {
   expect_match(page_html, "dew_humidity_mode", fixed = TRUE)
   expect_match(page_html, "dew_h2o_ppm", fixed = TRUE)
   expect_match(page_html, "dew_relative_humidity", fixed = TRUE)
+  expect_match(page_html, "dew_couple_temperatures", fixed = TRUE)
   expect_match(page_html, "dew_safety_buffer", fixed = TRUE)
   expect_match(page_html, "dew_point_audit_plot", fixed = TRUE)
 
@@ -76,6 +77,7 @@ test_that("comparison controls, status, variables, and protocols render", {
       dew_relative_humidity = 60,
       dew_tcuv = 22,
       dew_tamb = 20,
+      dew_couple_temperatures = FALSE,
       dew_pamb = 100,
       dew_safety_buffer = 2
     )
@@ -98,7 +100,9 @@ test_that("comparison controls, status, variables, and protocols render", {
     expect_match(output$dew_point_results$html, "Recommended minimum ambient", fixed = TRUE)
     expect_match(output$dew_point_results$html, "Ambient margin", fixed = TRUE)
     expect_match(output$dew_point_results$html, "Internal margin", fixed = TRUE)
-    expect_match(output$dew_point_results$html, "Above the selected safety buffer", fixed = TRUE)
+    expect_match(output$dew_point_results$html, "Ambient relative to cuvette", fixed = TRUE)
+    expect_match(output$dew_point_results$html, "Cuvette warmer than ambient", fixed = TRUE)
+    expect_match(output$dew_point_results$html, "tube", fixed = TRUE)
     expect_match(
       output$dew_point_audit_heading$html,
       "20260713_1023_chamber_oak(area10)_postblackout.csv",
@@ -107,6 +111,15 @@ test_that("comparison controls, status, variables, and protocols render", {
     expect_null(dew_point_audit_widget_result()$error)
     expect_s3_class(dew_point_audit_widget_result()$value, "plotly")
     expect_length(dew_point_audit_widget_result()$value$x$data, 4L)
+    expect_match(output$dew_point_audit_alert$html, "Tcuv exceeded Tamb", fixed = TRUE)
+
+    session$setInputs(dew_couple_temperatures = TRUE)
+    session$flushReact()
+    expect_match(
+      output$dew_point_results$html,
+      "Temperature conditions clear both checks",
+      fixed = TRUE
+    )
 
     variable_html <- output$variable_selector$html
     expect_lt(
@@ -203,6 +216,7 @@ test_that("missing audit columns render inline without disabling the planner", {
       dew_relative_humidity = 60,
       dew_tcuv = 22,
       dew_tamb = 20,
+      dew_couple_temperatures = FALSE,
       dew_pamb = 100,
       dew_safety_buffer = 2
     )

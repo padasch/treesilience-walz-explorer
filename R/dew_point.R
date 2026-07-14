@@ -144,9 +144,12 @@ calculate_dew_point_plan <- function(
   ambient_margin_c <- tamb_c - dew_point_c
   internal_margin_c <- internal_reference_c - dew_point_c
   limiting_margin_c <- min(ambient_margin_c, internal_margin_c)
+  temperature_order_margin_c <- tamb_c - tcuv_c
+  cuvette_above_ambient <- tcuv_c > tamb_c
+  dew_point_minimum_ambient_c <- dew_point_c + safety_buffer_c
   status <- if (limiting_margin_c <= 0) {
     "danger"
-  } else if (limiting_margin_c < safety_buffer_c) {
+  } else if (cuvette_above_ambient || limiting_margin_c < safety_buffer_c) {
     "caution"
   } else {
     "safe"
@@ -159,11 +162,46 @@ calculate_dew_point_plan <- function(
     internal_reference_c = unname(internal_reference_c),
     internal_margin_c = unname(internal_margin_c),
     limiting_margin_c = unname(limiting_margin_c),
-    minimum_ambient_c = unname(dew_point_c + safety_buffer_c),
+    temperature_order_margin_c = unname(temperature_order_margin_c),
+    cuvette_above_ambient = cuvette_above_ambient,
+    dew_point_minimum_ambient_c = unname(dew_point_minimum_ambient_c),
+    minimum_ambient_c = unname(max(tcuv_c, dew_point_minimum_ambient_c)),
     safety_buffer_c = safety_buffer_c,
     h2o_ppm = unname(h2o_ppm),
     relative_humidity = unname(relative_humidity),
     status = status
+  )
+}
+
+dew_point_temperature_order_summary <- function(parsed) {
+  required <- c("Tcuv", "Tamb")
+  missing <- setdiff(required, names(parsed$data))
+  if (length(missing) > 0L) {
+    stop(
+      sprintf(
+        "The selected run is missing required temperature column(s): %s.",
+        paste(missing, collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
+
+  tcuv <- as.numeric(parsed$data$Tcuv)
+  tamb <- as.numeric(parsed$data$Tamb)
+  valid <- is.finite(tcuv) & is.finite(tamb)
+  if (!any(valid)) {
+    stop(
+      "The selected run contains no valid paired Tcuv and Tamb values.",
+      call. = FALSE
+    )
+  }
+
+  excess <- tcuv[valid] - tamb[valid]
+  warmer <- excess > 0
+  list(
+    valid_count = sum(valid),
+    warning_count = sum(warmer),
+    maximum_excess_c = if (any(warmer)) max(excess[warmer]) else 0
   )
 }
 

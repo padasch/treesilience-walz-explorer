@@ -32,20 +32,37 @@ test_that("planner status follows dew point and the separate safety buffer", {
     pamb_kpa * 1e6
 
   danger <- calculate_dew_point_plan(
-    "ppm", 20, 10, pamb_kpa, h2o_ppm, safety_buffer_c = 2
+    "ppm", 12, 12, pamb_kpa, h2o_ppm, safety_buffer_c = 2
   )
   caution <- calculate_dew_point_plan(
-    "ppm", 20, 11, pamb_kpa, h2o_ppm, safety_buffer_c = 2
+    "ppm", 13, 13, pamb_kpa, h2o_ppm, safety_buffer_c = 2
   )
   safe <- calculate_dew_point_plan(
-    "ppm", 20, 12.1, pamb_kpa, h2o_ppm, safety_buffer_c = 2
+    "ppm", 14.1, 14.1, pamb_kpa, h2o_ppm, safety_buffer_c = 2
   )
 
   expect_equal(danger$dew_point_c, target_dew_point, tolerance = 1e-6)
   expect_equal(danger$status, "danger")
   expect_equal(caution$status, "caution")
   expect_equal(safe$status, "safe")
-  expect_equal(safe$minimum_ambient_c, 12, tolerance = 1e-6)
+  expect_equal(safe$minimum_ambient_c, 14.1, tolerance = 1e-6)
+})
+
+test_that("planner warns whenever Tcuv is warmer than Tamb", {
+  warning <- calculate_dew_point_plan(
+    "ppm", 22, 20, 100, h2o_ppm = 15000, safety_buffer_c = 2
+  )
+  coupled <- calculate_dew_point_plan(
+    "ppm", 22, 22, 100, h2o_ppm = 15000, safety_buffer_c = 2
+  )
+
+  expect_equal(warning$status, "caution")
+  expect_true(warning$cuvette_above_ambient)
+  expect_equal(warning$temperature_order_margin_c, -2)
+  expect_equal(warning$minimum_ambient_c, 22)
+  expect_false(coupled$cuvette_above_ambient)
+  expect_equal(coupled$temperature_order_margin_c, 0)
+  expect_equal(coupled$status, "safe")
 })
 
 test_that("Tcuv minus two is independent of the operational buffer", {
@@ -63,7 +80,8 @@ test_that("Tcuv minus two is independent of the operational buffer", {
     with_buffer$internal_margin_c
   )
   expect_equal(
-    with_buffer$minimum_ambient_c - without_buffer$minimum_ambient_c,
+    with_buffer$dew_point_minimum_ambient_c -
+      without_buffer$dew_point_minimum_ambient_c,
     5
   )
 })
@@ -115,6 +133,18 @@ test_that("recorded audit contains exactly the four requested series", {
   widget <- make_dew_point_audit_plot(parsed)
   expect_s3_class(widget, "plotly")
   expect_length(widget$x$data, 4L)
+})
+
+test_that("recorded audit summarizes Tcuv above Tamb without adding a series", {
+  parsed <- dew_point_fixture()
+  summary <- dew_point_temperature_order_summary(parsed)
+
+  expect_equal(summary$valid_count, nrow(parsed$data))
+  expect_equal(summary$warning_count, nrow(parsed$data))
+  expect_equal(
+    summary$maximum_excess_c,
+    max(parsed$data$Tcuv - parsed$data$Tamb)
+  )
 })
 
 test_that("recorded audit reports missing and invalid inputs", {

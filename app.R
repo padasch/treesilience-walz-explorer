@@ -265,14 +265,29 @@ ui <- bslib::page_sidebar(
               step = 0.1,
               post = "°C"
             ),
-            shiny::sliderInput(
-              "dew_tamb",
-              "Ambient temperature (Tamb)",
-              min = -10,
-              max = 50,
-              value = 20,
-              step = 0.1,
-              post = "°C"
+            bslib::input_switch(
+              "dew_couple_temperatures",
+              "Couple ambient to cuvette (Tamb = Tcuv)",
+              value = FALSE
+            ),
+            shiny::conditionalPanel(
+              condition = "!input.dew_couple_temperatures",
+              shiny::sliderInput(
+                "dew_tamb",
+                "Ambient temperature (Tamb)",
+                min = -10,
+                max = 50,
+                value = 20,
+                step = 0.1,
+                post = "°C"
+              )
+            ),
+            shiny::conditionalPanel(
+              condition = "input.dew_couple_temperatures",
+              shiny::p(
+                class = "dew-reference-note",
+                "Tamb follows Tcuv while coupled. Dew-point and Tcuv - 2°C checks remain active."
+              )
             ),
             shiny::sliderInput(
               "dew_pamb",
@@ -470,6 +485,20 @@ server <- function(input, output, session) {
     shiny::updateSliderInput(session, "dew_pamb", value = round(pamb_kpa, 1))
   }, ignoreInit = TRUE)
 
+  shiny::observeEvent(
+    list(input$dew_couple_temperatures, input$dew_tcuv),
+    {
+      if (isTRUE(input$dew_couple_temperatures)) {
+        shiny::updateSliderInput(
+          session,
+          "dew_tamb",
+          value = round(input$dew_tcuv, 1)
+        )
+      }
+    },
+    ignoreInit = TRUE
+  )
+
   available_variable_choices <- shiny::reactive({
     primary <- measurement_result()
     if (!is.null(primary$error) || is.null(primary$value)) {
@@ -604,12 +633,17 @@ server <- function(input, output, session) {
   })
 
   dew_point_plan_result <- shiny::reactive({
+    tamb_c <- if (isTRUE(input$dew_couple_temperatures)) {
+      input$dew_tcuv
+    } else {
+      input$dew_tamb
+    }
     tryCatch(
       list(
         value = calculate_dew_point_plan(
           humidity_mode = input$dew_humidity_mode,
           tcuv_c = input$dew_tcuv,
-          tamb_c = input$dew_tamb,
+          tamb_c = tamb_c,
           pamb_kpa = input$dew_pamb,
           h2o_ppm = input$dew_h2o_ppm,
           relative_humidity = input$dew_relative_humidity,
@@ -631,13 +665,28 @@ server <- function(input, output, session) {
     status_label <- switch(
       value$status,
       danger = "Condensation risk",
-      caution = "Inside the selected safety buffer",
-      safe = "Above the selected safety buffer"
+      caution = if (value$cuvette_above_ambient) {
+        "Cuvette warmer than ambient"
+      } else {
+        "Inside the selected safety buffer"
+      },
+      safe = "Temperature conditions clear both checks"
     )
-    status_detail <- sprintf(
-      "The limiting margin is %.1f°C, using the colder of Tamb and Tcuv - 2°C.",
-      value$limiting_margin_c
-    )
+    status_detail <- if (value$cuvette_above_ambient) {
+      paste0(
+        sprintf(
+          "Tcuv is %.1f°C above Tamb. ",
+          abs(value$temperature_order_margin_c)
+        ),
+        "The GFS-3000 manual warns that this temperature order can cause condensation in the tubes. ",
+        sprintf("The limiting dew-point margin is %.1f°C.", value$limiting_margin_c)
+      )
+    } else {
+      sprintf(
+        "The limiting dew-point margin is %.1f°C, using the colder of Tamb and Tcuv - 2°C.",
+        value$limiting_margin_c
+      )
+    }
 
     shiny::tagList(
       shiny::div(
@@ -654,7 +703,15 @@ server <- function(input, output, session) {
         dew_metric_ui(
           "Recommended minimum ambient",
           sprintf("%.1f°C", value$minimum_ambient_c),
-          sprintf("includes %.1f°C buffer", value$safety_buffer_c)
+          sprintf(
+            "higher of Tcuv and dew point + %.1f°C buffer",
+            value$safety_buffer_c
+          )
+        ),
+        dew_metric_ui(
+          "Ambient relative to cuvette",
+          sprintf("%+.1f°C", value$temperature_order_margin_c),
+          "Tamb - Tcuv; should be zero or higher"
         ),
         dew_metric_ui(
           "Ambient margin",
@@ -677,7 +734,11 @@ server <- function(input, output, session) {
     }
 
     tryCatch(
-      list(value = make_dew_point_audit_plot(primary$value), error = NULL),
+      list(
+        value = make_dew_point_audit_plot(primary$value),
+        temperature_order = dew_point_temperature_order_summary(primary$value),
+        error = NULL
+      ),
       error = function(error) list(value = NULL, error = conditionMessage(error))
     )
   })
@@ -696,11 +757,27 @@ server <- function(input, output, session) {
 
   output$dew_point_audit_alert <- shiny::renderUI({
     result <- dew_point_audit_widget_result()
-    if (is.null(result$error)) {
+    if (!is.null(result$error)) {
+      return(alert_ui(
+        paste("The recorded dew-point audit is unavailable:", result$error),
+        "warning"
+      ))
+    }
+    temperature_order <- result$temperature_order
+    if (temperature_order$warning_count == 0L) {
       return(NULL)
     }
     alert_ui(
-      paste("The recorded dew-point audit is unavailable:", result$error),
+      sprintf(
+        paste0(
+          "Tcuv exceeded Tamb in %d of %d valid recorded observations ",
+          "(maximum difference %.1f°C). The GFS-3000 manual identifies ",
+          "this temperature order as a tube-condensation risk."
+        ),
+        temperature_order$warning_count,
+        temperature_order$valid_count,
+        temperature_order$maximum_excess_c
+      ),
       "warning"
     )
   })
