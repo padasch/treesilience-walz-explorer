@@ -45,24 +45,44 @@ test_that("planner status follows dew point and the separate safety buffer", {
   expect_equal(danger$status, "danger")
   expect_equal(caution$status, "caution")
   expect_equal(safe$status, "safe")
-  expect_equal(safe$minimum_ambient_c, 14.1, tolerance = 1e-6)
+  expect_equal(safe$safety_threshold_c, 12, tolerance = 1e-6)
 })
 
 test_that("planner warns whenever Tcuv is warmer than Tamb", {
   warning <- calculate_dew_point_plan(
     "ppm", 22, 20, 100, h2o_ppm = 15000, safety_buffer_c = 2
   )
-  coupled <- calculate_dew_point_plan(
-    "ppm", 22, 22, 100, h2o_ppm = 15000, safety_buffer_c = 2
+  ambient_above <- calculate_dew_point_plan(
+    "ppm", 22, 24, 100, h2o_ppm = 15000, safety_buffer_c = 2
   )
 
   expect_equal(warning$status, "caution")
   expect_true(warning$cuvette_above_ambient)
   expect_equal(warning$temperature_order_margin_c, -2)
-  expect_equal(warning$minimum_ambient_c, 22)
-  expect_false(coupled$cuvette_above_ambient)
-  expect_equal(coupled$temperature_order_margin_c, 0)
-  expect_equal(coupled$status, "safe")
+  expect_false(ambient_above$cuvette_above_ambient)
+  expect_equal(ambient_above$temperature_order_margin_c, 2)
+  expect_equal(ambient_above$status, "safe")
+  expect_equal(ambient_above$limiting_surface, "Tcuv - 2°C")
+  expect_equal(
+    ambient_above$buffer_clearance_c,
+    ambient_above$limiting_margin_c - 2
+  )
+})
+
+test_that("planner plot compares all five safety temperatures", {
+  skip_if_not_installed("plotly")
+  plan <- calculate_dew_point_plan(
+    "ppm", 22, 24, 100, h2o_ppm = 15000, safety_buffer_c = 2
+  )
+  widget <- make_dew_point_plan_plot(plan)
+  built <- plotly::plotly_build(widget)
+
+  expect_s3_class(widget, "plotly")
+  expect_length(built$x$data, 5L)
+  trace_names <- vapply(built$x$data, function(trace) trace$name, character(1))
+  expect_true(any(grepl("Dew point + safety margin", trace_names, fixed = TRUE)))
+  expect_true(any(grepl("Tcuv - 2°C", trace_names, fixed = TRUE)))
+  expect_true(any(grepl("Ambient temperature", trace_names, fixed = TRUE)))
 })
 
 test_that("Tcuv minus two is independent of the operational buffer", {
@@ -80,8 +100,7 @@ test_that("Tcuv minus two is independent of the operational buffer", {
     with_buffer$internal_margin_c
   )
   expect_equal(
-    with_buffer$dew_point_minimum_ambient_c -
-      without_buffer$dew_point_minimum_ambient_c,
+    with_buffer$safety_threshold_c - without_buffer$safety_threshold_c,
     5
   )
 })

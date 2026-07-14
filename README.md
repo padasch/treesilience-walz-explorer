@@ -13,7 +13,7 @@ No WALZ measurements, Google credentials, or thesis files are stored in this rep
 - Defaults for `A`, `GH2O`, `Tcuv`, `Tamb`, `VPD`, `rh`, `ca`, `ci`, `White x T`, and `PARtop`
 - An optional two-run overlay aligned at elapsed minute zero, with original timestamps retained in hover text
 - A second interactive **A vs state** view controlled by the same variable checkboxes
-- A **Dew-Point Calculation** tab with interactive planning sliders, optional `Tamb = Tcuv` coupling, calculated safety margins, and a four-line audit of the primary recorded run
+- A **Dew-Point Calculation** tab with interactive planning sliders, optional `Tamb = Tcuv + safety margin` coupling, a visual temperature-safety comparison, and a four-line audit of the primary recorded run
 - Plotly zoom, pan, hover, line drawing, freehand drawing, erasing, and an optional 15-minute time grid
 - The raw matched protocol TXT file for each displayed run, shown as escaped text
 - Persistent warnings for Drive failures, malformed CSV files, missing variables, and missing or ambiguous protocols
@@ -21,7 +21,9 @@ No WALZ measurements, Google credentials, or thesis files are stored in this rep
 
 ## Dew-point calculation
 
-The planning calculator accepts expected chamber H2O in ppm or relative humidity at `Tcuv`. It reports the calculated dew point, ambient and internal margins, and the minimum ambient temperature after applying an adjustable operational buffer. A switch can couple `Tamb` to `Tcuv` while temperatures are explored. When uncoupled, `Tcuv > Tamb` always produces a caution because the manual identifies that temperature order as a tube-condensation risk. The recommended minimum ambient temperature is the higher of `Tcuv` and dew point plus the selected buffer. The selected primary run is audited using `wa`, `Pamb`, `Tcuv`, and `Tamb`; overlay runs are intentionally excluded from this tab, and a dynamic warning reports observations where `Tcuv` exceeded `Tamb`.
+The planning calculator accepts expected cuvette H2O in ppm or relative humidity at `Tcuv`. Its Plotly comparison shows dew point, dew point plus the selected safety margin, `Tcuv - 2°C`, `Tcuv`, and `Tamb`. A switch couples the temperatures as `Tamb = Tcuv + safety margin`. When uncoupled, `Tcuv > Tamb` always produces a caution because the manual identifies that temperature order as a tube-condensation risk. For planning, the H2O value should conservatively represent expected cuvette or outlet humidity because the inlet setpoint alone can underestimate humidity after leaf transpiration.
+
+The selected primary run is audited row by row using the actual recorded `wa` and `Pamb` values to calculate dew point, together with the recorded `Tcuv` and `Tamb`; overlay runs are intentionally excluded from this tab. A dynamic warning reports observations where `Tcuv` exceeded `Tamb`.
 
 Saturation vapor pressure follows the Goff-Gratch relationship documented in the [official GFS-3000 manual](https://www.walz.com/files/downloads/gfs-3000_manual_9.pdf). The `Tcuv - 2°C` curve represents the manual's estimate of the coldest internal cuvette location during strong cooling and remains independent of the user-selected safety buffer. The calculator is a planning and uploaded-run analysis tool, not a live equipment interlock.
 

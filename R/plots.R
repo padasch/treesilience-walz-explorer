@@ -470,3 +470,106 @@ make_dew_point_audit_plot <- function(parsed) {
   )
   plotly_controls(widget)
 }
+
+make_dew_point_plan_plot <- function(plan) {
+  required <- c(
+    "dew_point_c",
+    "safety_threshold_c",
+    "internal_reference_c",
+    "temperature_order_margin_c",
+    "safety_buffer_c"
+  )
+  missing <- setdiff(required, names(plan))
+  if (length(missing) > 0L) {
+    stop(
+      sprintf(
+        "The dew-point plan is missing value(s): %s.",
+        paste(missing, collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
+
+  tcuv_c <- plan$internal_reference_c + 2
+  tamb_c <- tcuv_c + plan$temperature_order_margin_c
+  series <- data.frame(
+    label = c(
+      "Dew point",
+      "Dew point + safety margin",
+      "Estimated coldest cuvette point (Tcuv - 2°C)",
+      "Cuvette temperature (Tcuv)",
+      "Ambient temperature (Tamb)"
+    ),
+    temperature = c(
+      plan$dew_point_c,
+      plan$safety_threshold_c,
+      plan$internal_reference_c,
+      tcuv_c,
+      tamb_c
+    ),
+    colour = c("#b23a32", "#b23a32", "#c27b2c", "#28754d", "#426a8c"),
+    dash = c("solid", "dash", "dash", "solid", "solid"),
+    stringsAsFactors = FALSE
+  )
+  if (any(!is.finite(series$temperature))) {
+    stop("The dew-point plan contains an invalid temperature.", call. = FALSE)
+  }
+
+  temperature_range <- range(series$temperature)
+  padding <- max(1, diff(temperature_range) * 0.1)
+  widget <- plotly::plot_ly()
+  for (index in seq_len(nrow(series))) {
+    row <- series[index, , drop = FALSE]
+    widget <- plotly::add_trace(
+      widget,
+      x = c(0, 1),
+      y = rep(row$temperature, 2),
+      type = "scatter",
+      mode = "lines",
+      name = sprintf("%s: %.1f°C", row$label, row$temperature),
+      line = list(
+        color = row$colour,
+        width = if (row$label == "Dew point + safety margin") 3 else 2.2,
+        dash = row$dash
+      ),
+      hovertemplate = paste0(
+        "<b>", row$label, "</b><br>",
+        sprintf("%.1f°C", row$temperature),
+        "<extra></extra>"
+      ),
+      showlegend = TRUE
+    )
+  }
+
+  widget <- plotly::layout(
+    widget,
+    xaxis = list(
+      fixedrange = TRUE,
+      range = c(0, 1),
+      showgrid = FALSE,
+      showline = FALSE,
+      showticklabels = FALSE,
+      title = "",
+      zeroline = FALSE
+    ),
+    yaxis = list(
+      range = c(temperature_range[[1]] - padding, temperature_range[[2]] + padding),
+      title = "Temperature [°C]",
+      gridcolor = "#e5e9e3",
+      zeroline = FALSE
+    ),
+    legend = list(
+      orientation = "h",
+      x = 0,
+      xanchor = "left",
+      y = -0.12,
+      yanchor = "top"
+    ),
+    hovermode = "closest",
+    margin = list(l = 70, r = 25, t = 20, b = 145),
+    paper_bgcolor = "#ffffff",
+    plot_bgcolor = "#ffffff"
+  )
+
+  plotly_controls(widget)
+}

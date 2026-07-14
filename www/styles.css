@@ -323,42 +323,6 @@ body {
   color: #7c2d28;
 }
 
-.dew-results-grid {
-  display: grid;
-  gap: 0.75rem;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.dew-metric {
-  background: #f7f9f6;
-  border: 1px solid var(--walz-border);
-  border-radius: 0.5rem;
-  display: flex;
-  flex-direction: column;
-  min-height: 7.2rem;
-  padding: 0.85rem;
-}
-
-.dew-metric-label {
-  color: var(--walz-muted);
-  font-size: 0.78rem;
-  font-weight: 650;
-}
-
-.dew-metric-value {
-  color: var(--walz-ink);
-  font-size: 1.7rem;
-  line-height: 1.2;
-  margin-top: 0.55rem;
-}
-
-.dew-metric-note {
-  color: var(--walz-muted);
-  font-size: 0.75rem;
-  margin-top: auto;
-  padding-top: 0.35rem;
-}
-
 .dew-audit-source {
   color: var(--walz-muted);
   font-size: 0.85rem;
@@ -366,13 +330,18 @@ body {
   overflow-wrap: anywhere;
 }
 
+.dew-audit-method {
+  color: var(--walz-muted);
+  font-size: 0.8rem;
+  margin: 0.25rem 1rem 0;
+}
+
 .plotly.html-widget {
   min-height: 600px;
 }
 
 @media (max-width: 700px) {
-  .dew-planner-grid,
-  .dew-results-grid {
+  .dew-planner-grid {
     grid-template-columns: 1fr;
   }
 

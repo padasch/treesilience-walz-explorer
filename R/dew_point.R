@@ -97,7 +97,7 @@ calculate_dew_point_plan <- function(
     safety_buffer_c = 2) {
   humidity_mode <- match.arg(humidity_mode)
   tcuv_c <- validate_planner_number(tcuv_c, "Cuvette temperature", -10, 50)
-  tamb_c <- validate_planner_number(tamb_c, "Ambient temperature", -10, 50)
+  tamb_c <- validate_planner_number(tamb_c, "Ambient temperature", -10, 55)
   pamb_kpa <- validate_planner_number(pamb_kpa, "Ambient pressure", 60, 110)
   safety_buffer_c <- validate_planner_number(
     safety_buffer_c,
@@ -144,9 +144,15 @@ calculate_dew_point_plan <- function(
   ambient_margin_c <- tamb_c - dew_point_c
   internal_margin_c <- internal_reference_c - dew_point_c
   limiting_margin_c <- min(ambient_margin_c, internal_margin_c)
+  limiting_temperature_c <- min(tamb_c, internal_reference_c)
+  limiting_surface <- if (ambient_margin_c <= internal_margin_c) {
+    "Tamb"
+  } else {
+    "Tcuv - 2°C"
+  }
   temperature_order_margin_c <- tamb_c - tcuv_c
   cuvette_above_ambient <- tcuv_c > tamb_c
-  dew_point_minimum_ambient_c <- dew_point_c + safety_buffer_c
+  safety_threshold_c <- dew_point_c + safety_buffer_c
   status <- if (limiting_margin_c <= 0) {
     "danger"
   } else if (cuvette_above_ambient || limiting_margin_c < safety_buffer_c) {
@@ -162,10 +168,12 @@ calculate_dew_point_plan <- function(
     internal_reference_c = unname(internal_reference_c),
     internal_margin_c = unname(internal_margin_c),
     limiting_margin_c = unname(limiting_margin_c),
+    limiting_temperature_c = unname(limiting_temperature_c),
+    limiting_surface = limiting_surface,
+    buffer_clearance_c = unname(limiting_margin_c - safety_buffer_c),
     temperature_order_margin_c = unname(temperature_order_margin_c),
     cuvette_above_ambient = cuvette_above_ambient,
-    dew_point_minimum_ambient_c = unname(dew_point_minimum_ambient_c),
-    minimum_ambient_c = unname(max(tcuv_c, dew_point_minimum_ambient_c)),
+    safety_threshold_c = unname(safety_threshold_c),
     safety_buffer_c = safety_buffer_c,
     h2o_ppm = unname(h2o_ppm),
     relative_humidity = unname(relative_humidity),

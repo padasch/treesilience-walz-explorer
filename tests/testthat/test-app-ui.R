@@ -17,6 +17,12 @@ test_that("comparison controls, status, variables, and protocols render", {
   expect_match(page_html, "dew_relative_humidity", fixed = TRUE)
   expect_match(page_html, "dew_couple_temperatures", fixed = TRUE)
   expect_match(page_html, "dew_safety_buffer", fixed = TRUE)
+  expect_match(page_html, "dew_point_plan_plot", fixed = TRUE)
+  expect_match(
+    page_html,
+    "Tamb = Tcuv + safety margin",
+    fixed = TRUE
+  )
   expect_match(page_html, "dew_point_audit_plot", fixed = TRUE)
 
   parsed <- dew_point_fixture()
@@ -97,16 +103,22 @@ test_that("comparison controls, status, variables, and protocols render", {
     expect_match(output$variable_selector$html, "name=\"environmental_variables\" value=\"Tamb\" checked", fixed = TRUE)
     expect_match(output$variable_selector$html, "value=\"Tleaf\"", fixed = TRUE)
     expect_match(output$variable_selector$html, "value=\"Area\"", fixed = TRUE)
-    expect_match(output$dew_point_results$html, "Calculated dew point", fixed = TRUE)
-    expect_match(output$dew_point_results$html, "Recommended minimum ambient", fixed = TRUE)
-    expect_match(output$dew_point_results$html, "Ambient margin", fixed = TRUE)
-    expect_match(output$dew_point_results$html, "Internal margin", fixed = TRUE)
-    expect_match(output$dew_point_results$html, "Ambient relative to cuvette", fixed = TRUE)
-    expect_match(output$dew_point_results$html, "Cuvette warmer than ambient", fixed = TRUE)
+    expect_match(output$dew_point_results$html, "Tube-condensation warning", fixed = TRUE)
     expect_match(output$dew_point_results$html, "tube", fixed = TRUE)
+    expect_null(dew_point_plan_widget_result()$error)
+    expect_s3_class(dew_point_plan_widget_result()$value, "plotly")
+    expect_length(
+      plotly::plotly_build(dew_point_plan_widget_result()$value)$x$data,
+      5L
+    )
     expect_match(
       output$dew_point_audit_heading$html,
       "20260713_1023_chamber_oak(area10)_postblackout.csv",
+      fixed = TRUE
+    )
+    expect_match(
+      output$dew_point_audit_heading$html,
+      "recorded wa [ppm] and Pamb [kPa]",
       fixed = TRUE
     )
     expect_null(dew_point_audit_widget_result()$error)
@@ -116,9 +128,13 @@ test_that("comparison controls, status, variables, and protocols render", {
 
     session$setInputs(dew_couple_temperatures = TRUE)
     session$flushReact()
+    expect_equal(
+      dew_point_plan_result()$value$temperature_order_margin_c,
+      2
+    )
     expect_match(
       output$dew_point_results$html,
-      "Temperature conditions clear both checks",
+      "Selected temperatures clear the safety margin",
       fixed = TRUE
     )
 
@@ -228,6 +244,7 @@ test_that("missing audit columns render inline without disabling the planner", {
       "missing required dew-point column(s): wa, Pamb",
       fixed = TRUE
     )
-    expect_match(output$dew_point_results$html, "Calculated dew point", fixed = TRUE)
+    expect_null(dew_point_plan_widget_result()$error)
+    expect_s3_class(dew_point_plan_widget_result()$value, "plotly")
   })
 })
