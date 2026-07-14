@@ -1,11 +1,15 @@
 WALZ_DEFAULT_DRIVE_FOLDER_ID <- "1wC9zXLEWQe4z7jBxfBfPRiVBuPJiF8vE"
 WALZ_TIMEZONE <- "Europe/Zurich"
+WALZ_RESPONSE_VARIABLES <- c("A", "GH2O", "E")
+WALZ_PHYSIOLOGICAL_CONSTANTS <- "Area"
 WALZ_PLOT_VARIABLES <- c(
-  "A", "Tcuv", "VPD", "rh", "ca", "ci", "White x T", "PARtop"
+  "A", "GH2O", "Tcuv", "VPD", "rh", "ca", "ci", "White x T", "PARtop"
 )
 
 WALZ_VARIABLE_LABELS <- c(
-  A = "Net CO2 assimilation",
+  A = "Net CO2",
+  GH2O = "GH2O",
+  E = "E",
   Tleaf = "Leaf temperature",
   Tcuv = "Cuvette temperature",
   VPD = "Vapour pressure deficit",
@@ -13,7 +17,8 @@ WALZ_VARIABLE_LABELS <- c(
   ca = "Ambient CO2",
   ci = "Intercellular CO2",
   `White x T` = "Light intensity",
-  PARtop = "PARtop"
+  PARtop = "PARtop",
+  Area = "Area"
 )
 
 walz_config <- function() {

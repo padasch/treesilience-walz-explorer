@@ -34,6 +34,15 @@ plot_variable_choices <- function(parsed_runs) {
     lapply(parsed_runs, plottable_variables),
     use.names = FALSE
   ))
+  variables <- c(
+    intersect(WALZ_RESPONSE_VARIABLES, variables),
+    setdiff(
+      variables,
+      c(WALZ_RESPONSE_VARIABLES, WALZ_PHYSIOLOGICAL_CONSTANTS)
+    ),
+    intersect(WALZ_PHYSIOLOGICAL_CONSTANTS, variables)
+  )
+
   labels <- vapply(variables, function(variable) {
     source <- parsed_runs[[which(vapply(
       parsed_runs,
@@ -44,6 +53,26 @@ plot_variable_choices <- function(parsed_runs) {
   }, character(1))
 
   stats::setNames(variables, labels)
+}
+
+group_plot_variable_choices <- function(choices) {
+  choice_values <- unname(choices)
+  subset_choices <- function(values) {
+    choices[match(values, choice_values)]
+  }
+
+  response_values <- intersect(WALZ_RESPONSE_VARIABLES, choice_values)
+  constant_values <- intersect(WALZ_PHYSIOLOGICAL_CONSTANTS, choice_values)
+  environmental_values <- setdiff(
+    choice_values,
+    c(response_values, constant_values)
+  )
+
+  list(
+    response = subset_choices(response_values),
+    environmental = subset_choices(environmental_values),
+    physiological_constant = subset_choices(constant_values)
+  )
 }
 
 empty_measurement_long <- function() {

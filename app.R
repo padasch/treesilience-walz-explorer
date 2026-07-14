@@ -26,6 +26,16 @@ drive_folder_url <- sprintf(
   config$drive_folder_id
 )
 
+drive_status_link_ui <- function() {
+  shiny::a(
+    "Open Google Drive folder",
+    href = drive_folder_url,
+    target = "_blank",
+    rel = "noopener noreferrer",
+    class = "drive-link drive-status-link"
+  )
+}
+
 alert_ui <- function(message, level = c("warning", "danger", "info")) {
   level <- match.arg(level)
   icon <- switch(
@@ -154,13 +164,6 @@ ui <- bslib::page_sidebar(
       "show_grid",
       "Show 15-minute time grid",
       value = FALSE
-    ),
-    shiny::a(
-      "Open source folder in Google Drive",
-      href = drive_folder_url,
-      target = "_blank",
-      rel = "noopener noreferrer",
-      class = "drive-link"
     )
   ),
   shiny::includeCSS("www/styles.css"),
@@ -320,32 +323,59 @@ server <- function(input, output, session) {
       return(alert_ui("No numeric variables are available for plotting.", "warning"))
     }
 
-    current <- shiny::isolate(input$plot_variables)
-    available_values <- unname(choices)
-    selected <- if (is.null(current)) {
-      intersect(WALZ_PLOT_VARIABLES, available_values)
-    } else {
-      intersect(current, available_values)
+    groups <- group_plot_variable_choices(choices)
+    checkbox_group <- function(input_id, label, group_choices) {
+      if (length(group_choices) == 0L) {
+        return(NULL)
+      }
+
+      current <- shiny::isolate(input[[input_id]])
+      available_values <- unname(group_choices)
+      selected <- if (is.null(current)) {
+        intersect(WALZ_PLOT_VARIABLES, available_values)
+      } else {
+        intersect(current, available_values)
+      }
+
+      shiny::checkboxGroupInput(
+        input_id,
+        label,
+        choices = group_choices,
+        selected = selected
+      )
     }
 
     shiny::div(
       class = "variable-selector",
-      shiny::checkboxGroupInput(
-        "plot_variables",
-        "Variables to show",
-        choices = choices,
-        selected = selected
+      shiny::h5("Variables to show"),
+      checkbox_group(
+        "response_variables",
+        "Response parameters",
+        groups$response
+      ),
+      checkbox_group(
+        "environmental_variables",
+        "Environmental parameters",
+        groups$environmental
+      ),
+      checkbox_group(
+        "constant_variables",
+        "Physiological constant",
+        groups$physiological_constant
       ),
       shiny::p(
         class = "control-help",
-        "Every numeric CSV variable is available. Selected state variables also appear in the A vs state tab."
+        "Every numeric CSV variable is available. Selected environmental and physiological variables also appear in the A vs state tab."
       )
     )
   })
 
   selected_variables <- shiny::reactive({
-    variables <- input$plot_variables
-    if (is.null(variables)) character() else variables
+    unique(c(
+      input$response_variables,
+      input$environmental_variables,
+      input$constant_variables
+    ))
   })
 
   active_run_labels <- shiny::reactive({
@@ -455,6 +485,7 @@ server <- function(input, output, session) {
     if (!is.null(source_error())) {
       return(shiny::tagList(
         shiny::h5("Drive status"),
+        drive_status_link_ui(),
         alert_ui(source_error(), "danger")
       ))
     }
@@ -463,6 +494,7 @@ server <- function(input, output, session) {
     if (is.null(index)) {
       return(shiny::tagList(
         shiny::h5("Drive status"),
+        drive_status_link_ui(),
         shiny::p(class = "muted-status", "Connecting to the public folder …")
       ))
     }
@@ -482,6 +514,7 @@ server <- function(input, output, session) {
 
     shiny::tagList(
       shiny::h5("Drive status"),
+      drive_status_link_ui(),
       shiny::tags$dl(
         class = "source-details",
         shiny::tags$dt("Runs found"),

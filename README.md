@@ -8,13 +8,15 @@ No WALZ measurements, Google credentials, or thesis files are stored in this rep
 
 ## What the app shows
 
-- Interactive timeseries panels with every numeric CSV variable available as a checkbox
-- Defaults for `A`, `Tcuv`, `VPD`, `rh`, `ca`, `ci`, `White x T`, and `PARtop`
+- Interactive timeseries panels with every numeric CSV variable available as a checkbox, grouped as response parameters, environmental parameters, and the physiological constant `Area`
+- Response parameters ordered as `A` (Net CO2), `GH2O`, and `E`, with `GH2O` selected by default
+- Defaults for `A`, `GH2O`, `Tcuv`, `VPD`, `rh`, `ca`, `ci`, `White x T`, and `PARtop`
 - An optional two-run overlay aligned at elapsed minute zero, with original timestamps retained in hover text
 - A second interactive **A vs state** view controlled by the same variable checkboxes
 - Plotly zoom, pan, hover, line drawing, freehand drawing, erasing, and an optional 15-minute time grid
 - The raw matched protocol TXT file for each displayed run, shown as escaped text
 - Persistent warnings for Drive failures, malformed CSV files, missing variables, and missing or ambiguous protocols
+- A direct link to the public Google Drive folder in the Drive status section
 
 The [public Google Drive folder](https://drive.google.com/drive/folders/1wC9zXLEWQe4z7jBxfBfPRiVBuPJiF8vE) must contain direct child folders named `measurements` and `protocols`. Only `.csv` files in `measurements` and `.txt` files in `protocols` are listed.
 
@@ -25,7 +27,7 @@ The app uses `googledrive::drive_deauth()` for non-interactive access to files t
 - `WALZ_DRIVE_FOLDER_ID`: replace the default root folder ID
 - `GOOGLE_DRIVE_API_KEY`: replace the built-in API key
 
-Downloaded content is cached in the running R process by Drive file ID and `modifiedTime`. Refreshing the app's file list exposes new or updated Drive data without publishing new code.
+Downloaded content is cached in the running R process by Drive file ID and `modifiedTime`. If the package's shared API-key download is temporarily unavailable, the app falls back to Google's public file-download URL. Refreshing the app's file list exposes new or updated Drive data without publishing new code.
 
 ## Protocol matching
 

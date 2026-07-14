@@ -157,16 +157,72 @@ with_remote_cache <- function(kind, record, loader) {
   value
 }
 
+download_drive_record <- function(
+    record,
+    destination,
+    drive_downloader = googledrive::drive_download,
+    direct_downloader = utils::download.file) {
+  drive_error <- tryCatch(
+    {
+      drive_downloader(
+        googledrive::as_id(record$id[[1]]),
+        path = destination,
+        overwrite = TRUE
+      )
+      NULL
+    },
+    error = function(error) error
+  )
+  if (is.null(drive_error)) {
+    return(invisible(destination))
+  }
+
+  direct_url <- sprintf(
+    "https://drive.google.com/uc?export=download&id=%s",
+    utils::URLencode(record$id[[1]], reserved = TRUE)
+  )
+  direct_error <- tryCatch(
+    {
+      status <- direct_downloader(
+        direct_url,
+        destination,
+        mode = "wb",
+        quiet = TRUE
+      )
+      if (!identical(status, 0L) || !file.exists(destination)) {
+        stop("The public download returned no file.", call. = FALSE)
+      }
+      size <- file.info(destination)$size[[1]]
+      if (is.na(size) || size == 0) {
+        stop("The public download returned an empty file.", call. = FALSE)
+      }
+      NULL
+    },
+    error = function(error) error
+  )
+  if (is.null(direct_error)) {
+    return(invisible(destination))
+  }
+
+  stop(
+    sprintf(
+      paste0(
+        "The file could not be downloaded through googledrive (%s) ",
+        "or Google's public file URL (%s)."
+      ),
+      conditionMessage(drive_error),
+      conditionMessage(direct_error)
+    ),
+    call. = FALSE
+  )
+}
+
 load_remote_measurement <- function(record) {
   with_remote_cache("measurement", record, function() {
     extension <- tools::file_ext(record$name[[1]])
     destination <- tempfile(fileext = paste0(".", extension))
     on.exit(unlink(destination), add = TRUE)
-    googledrive::drive_download(
-      googledrive::as_id(record$id[[1]]),
-      path = destination,
-      overwrite = TRUE
-    )
+    download_drive_record(record, destination)
     read_walz_csv(destination)
   })
 }
@@ -175,11 +231,7 @@ load_remote_protocol <- function(record) {
   with_remote_cache("protocol", record, function() {
     destination <- tempfile(fileext = ".txt")
     on.exit(unlink(destination), add = TRUE)
-    googledrive::drive_download(
-      googledrive::as_id(record$id[[1]]),
-      path = destination,
-      overwrite = TRUE
-    )
+    download_drive_record(record, destination)
     paste(
       readLines(destination, encoding = "latin1", warn = FALSE),
       collapse = "\n"

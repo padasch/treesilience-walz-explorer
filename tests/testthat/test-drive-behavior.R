@@ -34,6 +34,44 @@ test_that("temporary loader failures are not cached", {
   expect_equal(calls, 2L)
 })
 
+test_that("public Drive URL is used when the package download fails", {
+  record <- data.frame(id = "public-file-id", stringsAsFactors = FALSE)
+  destination <- tempfile()
+  on.exit(unlink(destination), add = TRUE)
+  direct_url <- NULL
+
+  result <- download_drive_record(
+    record,
+    destination,
+    drive_downloader = function(...) stop("shared API key unavailable"),
+    direct_downloader = function(url, destfile, mode, quiet) {
+      direct_url <<- url
+      writeBin(charToRaw("public content"), destfile)
+      0L
+    }
+  )
+
+  expect_identical(result, destination)
+  expect_match(direct_url, "id=public-file-id", fixed = TRUE)
+  expect_equal(readLines(destination, warn = FALSE), "public content")
+})
+
+test_that("Drive download reports both package and public URL failures", {
+  record <- data.frame(id = "unavailable-file-id", stringsAsFactors = FALSE)
+  destination <- tempfile()
+  on.exit(unlink(destination), add = TRUE)
+
+  expect_error(
+    download_drive_record(
+      record,
+      destination,
+      drive_downloader = function(...) stop("package failure"),
+      direct_downloader = function(...) stop("public URL failure")
+    ),
+    "package failure.*public URL failure"
+  )
+})
+
 test_that("empty folders and deleted selections resolve safely", {
   empty_index <- list(measurements = data.frame(id = character()))
   populated_index <- list(

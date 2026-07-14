@@ -69,14 +69,43 @@ test_that("comparison controls, status, variables, and protocols render", {
     session$flushReact()
 
     expect_match(output$source_status$html, "<dl", fixed = TRUE)
+    expect_match(
+      output$source_status$html,
+      "https://drive.google.com/drive/folders/1wC9zXLEWQe4z7jBxfBfPRiVBuPJiF8vE",
+      fixed = TRUE
+    )
+    expect_match(output$variable_selector$html, "Response parameters", fixed = TRUE)
+    expect_match(output$variable_selector$html, "Environmental parameters", fixed = TRUE)
+    expect_match(output$variable_selector$html, "Physiological constant", fixed = TRUE)
+    expect_match(output$variable_selector$html, "name=\"response_variables\" value=\"GH2O\" checked", fixed = TRUE)
     expect_match(output$variable_selector$html, "value=\"Tcuv\"", fixed = TRUE)
     expect_match(output$variable_selector$html, "value=\"Tleaf\"", fixed = TRUE)
     expect_match(output$variable_selector$html, "value=\"Area\"", fixed = TRUE)
 
+    variable_html <- output$variable_selector$html
+    expect_lt(
+      regexpr("Response parameters", variable_html, fixed = TRUE)[[1]],
+      regexpr("Environmental parameters", variable_html, fixed = TRUE)[[1]]
+    )
+    expect_lt(
+      regexpr("value=\"A\"", variable_html, fixed = TRUE)[[1]],
+      regexpr("value=\"GH2O\"", variable_html, fixed = TRUE)[[1]]
+    )
+    expect_lt(
+      regexpr("value=\"GH2O\"", variable_html, fixed = TRUE)[[1]],
+      regexpr("value=\"E\"", variable_html, fixed = TRUE)[[1]]
+    )
+    expect_lt(
+      regexpr("Environmental parameters", variable_html, fixed = TRUE)[[1]],
+      regexpr("value=\"Area\"", variable_html, fixed = TRUE)[[1]]
+    )
+
     session$setInputs(
       overlay_enabled = TRUE,
       comparison_id = "overlay-id",
-      plot_variables = c("A", "Tcuv", "PARtop"),
+      response_variables = c("A", "GH2O"),
+      environmental_variables = c("Tcuv", "PARtop"),
+      constant_variables = character(),
       show_grid = TRUE
     )
     session$flushReact()
