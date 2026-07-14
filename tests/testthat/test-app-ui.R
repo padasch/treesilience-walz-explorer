@@ -11,8 +11,14 @@ test_that("comparison controls, status, variables, and protocols render", {
     regexpr("source_status", page_html, fixed = TRUE)[[1]],
     regexpr("measurement_id", page_html, fixed = TRUE)[[1]]
   )
+  expect_match(page_html, "Dew-Point Calculation", fixed = TRUE)
+  expect_match(page_html, "dew_humidity_mode", fixed = TRUE)
+  expect_match(page_html, "dew_h2o_ppm", fixed = TRUE)
+  expect_match(page_html, "dew_relative_humidity", fixed = TRUE)
+  expect_match(page_html, "dew_safety_buffer", fixed = TRUE)
+  expect_match(page_html, "dew_point_audit_plot", fixed = TRUE)
 
-  parsed <- read_walz_csv(fixture_path("walz_sample.csv"))
+  parsed <- dew_point_fixture()
   modified <- as.POSIXct("2026-07-13 16:27:42", tz = "UTC")
   fake_index <- list(
     measurements = data.frame(
@@ -64,7 +70,14 @@ test_that("comparison controls, status, variables, and protocols render", {
     session$setInputs(
       measurement_id = "primary-id",
       overlay_enabled = FALSE,
-      show_grid = FALSE
+      show_grid = FALSE,
+      dew_humidity_mode = "ppm",
+      dew_h2o_ppm = 15000,
+      dew_relative_humidity = 60,
+      dew_tcuv = 22,
+      dew_tamb = 20,
+      dew_pamb = 100,
+      dew_safety_buffer = 2
     )
     session$flushReact()
 
@@ -81,6 +94,19 @@ test_that("comparison controls, status, variables, and protocols render", {
     expect_match(output$variable_selector$html, "value=\"Tcuv\"", fixed = TRUE)
     expect_match(output$variable_selector$html, "value=\"Tleaf\"", fixed = TRUE)
     expect_match(output$variable_selector$html, "value=\"Area\"", fixed = TRUE)
+    expect_match(output$dew_point_results$html, "Calculated dew point", fixed = TRUE)
+    expect_match(output$dew_point_results$html, "Recommended minimum ambient", fixed = TRUE)
+    expect_match(output$dew_point_results$html, "Ambient margin", fixed = TRUE)
+    expect_match(output$dew_point_results$html, "Internal margin", fixed = TRUE)
+    expect_match(output$dew_point_results$html, "Above the selected safety buffer", fixed = TRUE)
+    expect_match(
+      output$dew_point_audit_heading$html,
+      "20260713_1023_chamber_oak(area10)_postblackout.csv",
+      fixed = TRUE
+    )
+    expect_null(dew_point_audit_widget_result()$error)
+    expect_s3_class(dew_point_audit_widget_result()$value, "plotly")
+    expect_length(dew_point_audit_widget_result()$value$x$data, 4L)
 
     variable_html <- output$variable_selector$html
     expect_lt(
@@ -129,5 +155,64 @@ test_that("comparison controls, status, variables, and protocols render", {
     expect_s3_class(timeseries_widget_result()$value, "plotly")
     expect_null(state_widget_result()$error)
     expect_s3_class(state_widget_result()$value, "plotly")
+    expect_length(dew_point_audit_widget_result()$value$x$data, 4L)
+  })
+})
+
+test_that("missing audit columns render inline without disabling the planner", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("bslib")
+
+  withr::local_dir(project_root)
+  app_environment <- new.env(parent = globalenv())
+  source("app.R", local = app_environment)
+
+  parsed <- read_walz_csv(fixture_path("walz_sample.csv"))
+  modified <- as.POSIXct("2026-07-13 16:27:42", tz = "UTC")
+  fake_index <- list(
+    measurements = data.frame(
+      id = "primary-id",
+      name = "measurement-without-dew-columns.csv",
+      modified_time = modified,
+      modified_iso = "2026-07-13T16:27:42.000Z",
+      mime_type = "text/csv",
+      size = 1,
+      stringsAsFactors = FALSE
+    ),
+    protocols = data.frame(
+      id = character(),
+      name = character(),
+      modified_time = as.POSIXct(character(), tz = "UTC"),
+      modified_iso = character(),
+      mime_type = character(),
+      size = numeric(),
+      stringsAsFactors = FALSE
+    ),
+    refreshed_at = modified
+  )
+
+  app_environment$list_walz_drive <- function(root_id) fake_index
+  app_environment$load_remote_measurement <- function(record) parsed
+
+  shiny::testServer(app_environment$server, {
+    session$setInputs(
+      measurement_id = "primary-id",
+      overlay_enabled = FALSE,
+      dew_humidity_mode = "ppm",
+      dew_h2o_ppm = 15000,
+      dew_relative_humidity = 60,
+      dew_tcuv = 22,
+      dew_tamb = 20,
+      dew_pamb = 100,
+      dew_safety_buffer = 2
+    )
+    session$flushReact()
+
+    expect_match(
+      output$dew_point_audit_alert$html,
+      "missing required dew-point column(s): wa, Pamb, Tamb",
+      fixed = TRUE
+    )
+    expect_match(output$dew_point_results$html, "Calculated dew point", fixed = TRUE)
   })
 })

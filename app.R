@@ -14,6 +14,7 @@ if (length(missing_packages) > 0L) {
 
 source("R/config.R", local = TRUE)
 source("R/walz_parser.R", local = TRUE)
+source("R/dew_point.R", local = TRUE)
 source("R/protocol_match.R", local = TRUE)
 source("R/drive_data.R", local = TRUE)
 source("R/plots.R", local = TRUE)
@@ -48,6 +49,15 @@ alert_ui <- function(message, level = c("warning", "danger", "info")) {
     class = paste("walz-alert", paste0("walz-alert-", level)),
     icon,
     shiny::span(message)
+  )
+}
+
+dew_metric_ui <- function(label, value, note = NULL) {
+  shiny::div(
+    class = "dew-metric",
+    shiny::span(class = "dew-metric-label", label),
+    shiny::strong(class = "dew-metric-value", value),
+    if (!is.null(note)) shiny::span(class = "dew-metric-note", note)
   )
 }
 
@@ -172,7 +182,8 @@ ui <- bslib::page_sidebar(
     shiny::h2("Explore gas-exchange runs without code"),
     shiny::p(
       "Zoom, pan, hover over observations, or draw directly on the plots. ",
-      "Selected variables control both the timeseries and A-versus-state views."
+      "Selected variables control both the timeseries and A-versus-state views; ",
+      "the dew-point tab supports planning and recorded-run checks."
     )
   ),
   shiny::uiOutput("selected_file_heading"),
@@ -189,6 +200,118 @@ ui <- bslib::page_sidebar(
       "A vs state",
       shiny::uiOutput("state_alerts"),
       plotly::plotlyOutput("state_plot", height = "850px")
+    ),
+    bslib::nav_panel(
+      "Dew-Point Calculation",
+      shiny::div(
+        class = "dew-point-tab",
+        shiny::div(
+          class = "dew-point-introduction",
+          shiny::h3("Plan ambient conditions before measuring"),
+          shiny::p(
+            "Adjust the expected chamber humidity, cuvette temperature, ambient temperature, and pressure to see the dew point and condensation margins."
+          ),
+          shiny::p(
+            class = "dew-reference-note",
+            "Tcuv - 2°C is the GFS-3000 manual's estimate of the coldest internal cuvette location during strong cooling. It is separate from the adjustable safety buffer."
+          )
+        ),
+        shiny::div(
+          class = "dew-planner-grid",
+          bslib::card(
+            class = "dew-input-card",
+            bslib::card_header("Planning inputs"),
+            shiny::radioButtons(
+              "dew_humidity_mode",
+              "Humidity input",
+              choices = c(
+                "Expected chamber H2O (ppm)" = "ppm",
+                "Relative humidity at Tcuv (%)" = "rh"
+              ),
+              selected = "ppm",
+              inline = TRUE
+            ),
+            shiny::conditionalPanel(
+              condition = "input.dew_humidity_mode === 'ppm'",
+              shiny::sliderInput(
+                "dew_h2o_ppm",
+                "Expected chamber H2O (wa)",
+                min = 100,
+                max = 75000,
+                value = 15000,
+                step = 100,
+                post = " ppm",
+                sep = ""
+              )
+            ),
+            shiny::conditionalPanel(
+              condition = "input.dew_humidity_mode === 'rh'",
+              shiny::sliderInput(
+                "dew_relative_humidity",
+                "Relative humidity at Tcuv",
+                min = 1,
+                max = 100,
+                value = 60,
+                step = 0.5,
+                post = "%"
+              )
+            ),
+            shiny::sliderInput(
+              "dew_tcuv",
+              "Cuvette temperature (Tcuv)",
+              min = -10,
+              max = 50,
+              value = 22,
+              step = 0.1,
+              post = "°C"
+            ),
+            shiny::sliderInput(
+              "dew_tamb",
+              "Ambient temperature (Tamb)",
+              min = -10,
+              max = 50,
+              value = 20,
+              step = 0.1,
+              post = "°C"
+            ),
+            shiny::sliderInput(
+              "dew_pamb",
+              "Ambient pressure (Pamb)",
+              min = 60,
+              max = 110,
+              value = 101.3,
+              step = 0.1,
+              post = " kPa"
+            ),
+            shiny::sliderInput(
+              "dew_safety_buffer",
+              "Operational safety buffer",
+              min = 0,
+              max = 5,
+              value = 2,
+              step = 0.5,
+              post = "°C"
+            ),
+            shiny::actionButton(
+              "load_dew_from_run",
+              "Load conservative values from primary run",
+              icon = shiny::icon("arrow-down")
+            )
+          ),
+          bslib::card(
+            class = "dew-results-card",
+            bslib::card_header("Calculated margins"),
+            shiny::uiOutput("dew_point_results")
+          )
+        ),
+        bslib::card(
+          class = "dew-audit-card",
+          bslib::card_header("Recorded primary run"),
+          shiny::uiOutput("dew_point_audit_heading"),
+          shiny::uiOutput("dew_point_audit_alert"),
+          plotly::plotlyOutput("dew_point_audit_plot", height = "650px")
+        )
+      )
     )
   )
 )
@@ -303,6 +426,49 @@ server <- function(input, output, session) {
       "Select a different measurement run to use as the overlay."
     )
   })
+
+  shiny::observeEvent(input$load_dew_from_run, {
+    primary <- measurement_result()
+    if (!is.null(primary$error) || is.null(primary$value)) {
+      shiny::showNotification(
+        "The primary run is not available for loading.",
+        type = "error"
+      )
+      return()
+    }
+
+    values <- tryCatch(
+      conservative_run_values(primary$value),
+      error = function(error) error
+    )
+    if (inherits(values, "error")) {
+      shiny::showNotification(conditionMessage(values), type = "error")
+      return()
+    }
+
+    clamp <- function(value, lower, upper) {
+      min(max(value, lower), upper)
+    }
+    h2o_ppm <- clamp(values$h2o_ppm, 100, 75000)
+    tcuv_c <- clamp(values$tcuv_c, -10, 50)
+    tamb_c <- clamp(values$tamb_c, -10, 50)
+    pamb_kpa <- clamp(values$pamb_kpa, 60, 110)
+    relative_humidity <- clamp(
+      relative_humidity_from_h2o_ppm(h2o_ppm, pamb_kpa, tcuv_c),
+      1,
+      100
+    )
+
+    shiny::updateSliderInput(session, "dew_h2o_ppm", value = round(h2o_ppm))
+    shiny::updateSliderInput(
+      session,
+      "dew_relative_humidity",
+      value = round(relative_humidity, 1)
+    )
+    shiny::updateSliderInput(session, "dew_tcuv", value = round(tcuv_c, 1))
+    shiny::updateSliderInput(session, "dew_tamb", value = round(tamb_c, 1))
+    shiny::updateSliderInput(session, "dew_pamb", value = round(pamb_kpa, 1))
+  }, ignoreInit = TRUE)
 
   available_variable_choices <- shiny::reactive({
     primary <- measurement_result()
@@ -435,6 +601,117 @@ server <- function(input, output, session) {
       ),
       error = function(error) list(value = NULL, error = conditionMessage(error))
     )
+  })
+
+  dew_point_plan_result <- shiny::reactive({
+    tryCatch(
+      list(
+        value = calculate_dew_point_plan(
+          humidity_mode = input$dew_humidity_mode,
+          tcuv_c = input$dew_tcuv,
+          tamb_c = input$dew_tamb,
+          pamb_kpa = input$dew_pamb,
+          h2o_ppm = input$dew_h2o_ppm,
+          relative_humidity = input$dew_relative_humidity,
+          safety_buffer_c = input$dew_safety_buffer
+        ),
+        error = NULL
+      ),
+      error = function(error) list(value = NULL, error = conditionMessage(error))
+    )
+  })
+
+  output$dew_point_results <- shiny::renderUI({
+    result <- dew_point_plan_result()
+    if (!is.null(result$error)) {
+      return(alert_ui(result$error, "warning"))
+    }
+
+    value <- result$value
+    status_label <- switch(
+      value$status,
+      danger = "Condensation risk",
+      caution = "Inside the selected safety buffer",
+      safe = "Above the selected safety buffer"
+    )
+    status_detail <- sprintf(
+      "The limiting margin is %.1f°C, using the colder of Tamb and Tcuv - 2°C.",
+      value$limiting_margin_c
+    )
+
+    shiny::tagList(
+      shiny::div(
+        class = paste("dew-status", paste0("dew-status-", value$status)),
+        shiny::strong(status_label),
+        shiny::span(status_detail)
+      ),
+      shiny::div(
+        class = "dew-results-grid",
+        dew_metric_ui(
+          "Calculated dew point",
+          sprintf("%.1f°C", value$dew_point_c)
+        ),
+        dew_metric_ui(
+          "Recommended minimum ambient",
+          sprintf("%.1f°C", value$minimum_ambient_c),
+          sprintf("includes %.1f°C buffer", value$safety_buffer_c)
+        ),
+        dew_metric_ui(
+          "Ambient margin",
+          sprintf("%+.1f°C", value$ambient_margin_c),
+          "Tamb - dew point"
+        ),
+        dew_metric_ui(
+          "Internal margin",
+          sprintf("%+.1f°C", value$internal_margin_c),
+          "Tcuv - 2°C - dew point"
+        )
+      )
+    )
+  })
+
+  dew_point_audit_widget_result <- shiny::reactive({
+    primary <- measurement_result()
+    if (!is.null(primary$error) || is.null(primary$value)) {
+      return(list(value = NULL, error = primary$error))
+    }
+
+    tryCatch(
+      list(value = make_dew_point_audit_plot(primary$value), error = NULL),
+      error = function(error) list(value = NULL, error = conditionMessage(error))
+    )
+  })
+
+  output$dew_point_audit_heading <- shiny::renderUI({
+    record <- selected_record()
+    if (is.null(record)) {
+      return(NULL)
+    }
+    shiny::p(
+      class = "dew-audit-source",
+      shiny::strong("Primary run: "),
+      record$name[[1]]
+    )
+  })
+
+  output$dew_point_audit_alert <- shiny::renderUI({
+    result <- dew_point_audit_widget_result()
+    if (is.null(result$error)) {
+      return(NULL)
+    }
+    alert_ui(
+      paste("The recorded dew-point audit is unavailable:", result$error),
+      "warning"
+    )
+  })
+
+  output$dew_point_audit_plot <- plotly::renderPlotly({
+    result <- dew_point_audit_widget_result()
+    if (is.null(result$value)) {
+      plotly::plotly_empty(type = "scatter", mode = "lines")
+    } else {
+      result$value
+    }
   })
 
   load_protocol_result <- function(record, index) {

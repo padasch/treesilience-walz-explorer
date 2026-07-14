@@ -244,11 +244,138 @@ body {
   margin-inline: 1rem;
 }
 
+.dew-point-tab {
+  padding: 0.25rem;
+}
+
+.dew-point-introduction {
+  margin-bottom: 1rem;
+  max-width: 920px;
+}
+
+.dew-point-introduction h3 {
+  color: var(--walz-ink);
+  font-size: 1.25rem;
+  margin-bottom: 0.35rem;
+}
+
+.dew-point-introduction p {
+  color: var(--walz-muted);
+  margin-bottom: 0.45rem;
+}
+
+.dew-reference-note {
+  border-left: 0.22rem solid #c27b2c;
+  font-size: 0.86rem;
+  padding-left: 0.7rem;
+}
+
+.dew-planner-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(18rem, 0.85fr) minmax(22rem, 1.15fr);
+  margin-bottom: 1rem;
+}
+
+.dew-input-card,
+.dew-results-card,
+.dew-audit-card {
+  border-color: var(--walz-border);
+}
+
+.dew-input-card .form-group {
+  margin-bottom: 1rem;
+}
+
+.dew-input-card .btn {
+  width: 100%;
+}
+
+.dew-status {
+  border: 1px solid;
+  border-radius: 0.55rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin-bottom: 1rem;
+  padding: 0.9rem 1rem;
+}
+
+.dew-status span {
+  font-size: 0.84rem;
+}
+
+.dew-status-safe {
+  background: #edf6f1;
+  border-color: #9bc7ad;
+  color: #24543a;
+}
+
+.dew-status-caution {
+  background: #fff8df;
+  border-color: #ead48a;
+  color: #6c5715;
+}
+
+.dew-status-danger {
+  background: #fff0ef;
+  border-color: #e9aaa5;
+  color: #7c2d28;
+}
+
+.dew-results-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.dew-metric {
+  background: #f7f9f6;
+  border: 1px solid var(--walz-border);
+  border-radius: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  min-height: 7.2rem;
+  padding: 0.85rem;
+}
+
+.dew-metric-label {
+  color: var(--walz-muted);
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.dew-metric-value {
+  color: var(--walz-ink);
+  font-size: 1.7rem;
+  line-height: 1.2;
+  margin-top: 0.55rem;
+}
+
+.dew-metric-note {
+  color: var(--walz-muted);
+  font-size: 0.75rem;
+  margin-top: auto;
+  padding-top: 0.35rem;
+}
+
+.dew-audit-source {
+  color: var(--walz-muted);
+  font-size: 0.85rem;
+  margin: 0.8rem 1rem 0;
+  overflow-wrap: anywhere;
+}
+
 .plotly.html-widget {
   min-height: 600px;
 }
 
 @media (max-width: 700px) {
+  .dew-planner-grid,
+  .dew-results-grid {
+    grid-template-columns: 1fr;
+  }
+
   .variable-selector .shiny-options-group {
     column-count: 1;
   }

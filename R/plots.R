@@ -418,3 +418,55 @@ make_state_plot <- function(
   )
   plotly_controls(widget)
 }
+
+make_dew_point_audit_plot <- function(parsed) {
+  long <- dew_point_audit_data(parsed)
+  colours <- c(
+    "Dew point" = "#b23a32",
+    "Ambient temperature (Tamb)" = "#426a8c",
+    "Cuvette temperature (Tcuv)" = "#28754d",
+    "Estimated coldest internal point (Tcuv - 2°C)" = "#c27b2c"
+  )
+  line_types <- c(
+    "Dew point" = "solid",
+    "Ambient temperature (Tamb)" = "solid",
+    "Cuvette temperature (Tcuv)" = "solid",
+    "Estimated coldest internal point (Tcuv - 2°C)" = "dashed"
+  )
+
+  plot <- ggplot2::ggplot(
+    long,
+    ggplot2::aes(
+      x = Datetime,
+      y = Temperature,
+      colour = Series,
+      linetype = Series,
+      group = Series,
+      text = hover
+    )
+  ) +
+    ggplot2::geom_line(linewidth = 0.75, na.rm = TRUE) +
+    ggplot2::scale_colour_manual(values = colours, drop = FALSE) +
+    ggplot2::scale_linetype_manual(values = line_types, drop = FALSE) +
+    ggplot2::scale_x_datetime(date_labels = "%H:%M") +
+    ggplot2::labs(
+      x = "Local time (Europe/Zurich)",
+      y = "Temperature [°C]",
+      colour = NULL,
+      linetype = NULL
+    ) +
+    walz_plot_theme() +
+    ggplot2::theme(legend.position = "bottom") +
+    ggplot2::guides(
+      colour = ggplot2::guide_legend(nrow = 2, byrow = TRUE),
+      linetype = ggplot2::guide_legend(nrow = 2, byrow = TRUE)
+    )
+
+  widget <- plotly::ggplotly(
+    plot,
+    tooltip = "text",
+    dynamicTicks = TRUE,
+    height = 650
+  )
+  plotly_controls(widget)
+}

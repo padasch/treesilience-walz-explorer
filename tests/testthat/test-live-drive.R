@@ -34,6 +34,12 @@ test_that("the public Drive source has the validated WALZ structure and files", 
     expect_equal(parsed$column_count, 40L, info = record$name)
     expect_false(anyNA(parsed$data$Datetime), info = record$name)
     expect_equal(parsed$missing_variables, character(), info = record$name)
+    expect_true(
+      all(DEW_POINT_REQUIRED_COLUMNS %in% names(parsed$data)),
+      info = record$name
+    )
+    audit <- dew_point_audit_data(parsed)
+    expect_equal(levels(audit$Series), DEW_POINT_SERIES, info = record$name)
 
     matched <- match_protocol(record$name[[1]], index$protocols)
     expect_equal(matched$status, "matched", info = record$name)
