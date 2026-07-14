@@ -10,7 +10,7 @@ No WALZ measurements, Google credentials, or thesis files are stored in this rep
 
 - Interactive timeseries panels with every numeric CSV variable available as a checkbox, grouped as response parameters, environmental parameters, and the physiological constant `Area`
 - Response parameters ordered as `A` (Net CO2), `GH2O`, and `E`, with `GH2O` selected by default
-- Defaults for `A`, `GH2O`, `Tcuv`, `VPD`, `rh`, `ca`, `ci`, `White x T`, and `PARtop`
+- Defaults for `A`, `GH2O`, `Tcuv`, `Tamb`, `VPD`, `rh`, `ca`, `ci`, `White x T`, and `PARtop`
 - An optional two-run overlay aligned at elapsed minute zero, with original timestamps retained in hover text
 - A second interactive **A vs state** view controlled by the same variable checkboxes
 - A **Dew-Point Calculation** tab with interactive planning sliders, optional `Tamb = Tcuv` coupling, calculated safety margins, and a four-line audit of the primary recorded run

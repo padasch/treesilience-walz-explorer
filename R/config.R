@@ -3,7 +3,8 @@ WALZ_TIMEZONE <- "Europe/Zurich"
 WALZ_RESPONSE_VARIABLES <- c("A", "GH2O", "E")
 WALZ_PHYSIOLOGICAL_CONSTANTS <- "Area"
 WALZ_PLOT_VARIABLES <- c(
-  "A", "GH2O", "Tcuv", "VPD", "rh", "ca", "ci", "White x T", "PARtop"
+  "A", "GH2O", "Tcuv", "Tamb", "VPD", "rh", "ca", "ci", "White x T",
+  "PARtop"
 )
 
 WALZ_VARIABLE_LABELS <- c(
@@ -12,6 +13,7 @@ WALZ_VARIABLE_LABELS <- c(
   E = "E",
   Tleaf = "Leaf temperature",
   Tcuv = "Cuvette temperature",
+  Tamb = "Ambient temperature",
   VPD = "Vapour pressure deficit",
   rh = "Relative humidity",
   ca = "Ambient CO2",

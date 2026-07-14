@@ -94,6 +94,7 @@ test_that("comparison controls, status, variables, and protocols render", {
     expect_match(output$variable_selector$html, "Physiological constant", fixed = TRUE)
     expect_match(output$variable_selector$html, "name=\"response_variables\" value=\"GH2O\" checked", fixed = TRUE)
     expect_match(output$variable_selector$html, "value=\"Tcuv\"", fixed = TRUE)
+    expect_match(output$variable_selector$html, "name=\"environmental_variables\" value=\"Tamb\" checked", fixed = TRUE)
     expect_match(output$variable_selector$html, "value=\"Tleaf\"", fixed = TRUE)
     expect_match(output$variable_selector$html, "value=\"Area\"", fixed = TRUE)
     expect_match(output$dew_point_results$html, "Calculated dew point", fixed = TRUE)
@@ -224,7 +225,7 @@ test_that("missing audit columns render inline without disabling the planner", {
 
     expect_match(
       output$dew_point_audit_alert$html,
-      "missing required dew-point column(s): wa, Pamb, Tamb",
+      "missing required dew-point column(s): wa, Pamb",
       fixed = TRUE
     )
     expect_match(output$dew_point_results$html, "Calculated dew point", fixed = TRUE)

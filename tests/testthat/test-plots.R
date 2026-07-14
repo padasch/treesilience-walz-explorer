@@ -25,6 +25,7 @@ test_that("numeric variables are grouped in physiological order", {
   expect_match(names(groups$response)[[1]], "^Net CO2")
   expect_true("GH2O" %in% WALZ_PLOT_VARIABLES)
   expect_true("Tcuv" %in% WALZ_PLOT_VARIABLES)
+  expect_true("Tamb" %in% WALZ_PLOT_VARIABLES)
   expect_false("Tleaf" %in% WALZ_PLOT_VARIABLES)
 })
 
