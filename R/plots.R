@@ -476,7 +476,8 @@ make_dew_point_plan_plot <- function(plan) {
     "dew_point_c",
     "safety_threshold_c",
     "internal_reference_c",
-    "temperature_order_margin_c",
+    "tcuv_c",
+    "tamb_c",
     "safety_buffer_c"
   )
   missing <- setdiff(required, names(plan))
@@ -490,22 +491,20 @@ make_dew_point_plan_plot <- function(plan) {
     )
   }
 
-  tcuv_c <- plan$internal_reference_c + 2
-  tamb_c <- tcuv_c + plan$temperature_order_margin_c
   series <- data.frame(
     label = c(
       "Dew point",
       "Dew point + safety margin",
       "Estimated coldest cuvette point (Tcuv - 2°C)",
       "Cuvette temperature (Tcuv)",
-      "Ambient temperature (Tamb)"
+      "Tube/environment temperature (Tamb proxy)"
     ),
     temperature = c(
       plan$dew_point_c,
       plan$safety_threshold_c,
       plan$internal_reference_c,
-      tcuv_c,
-      tamb_c
+      plan$tcuv_c,
+      plan$tamb_c
     ),
     colour = c("#b23a32", "#b23a32", "#c27b2c", "#28754d", "#426a8c"),
     dash = c("solid", "dash", "dash", "solid", "solid"),

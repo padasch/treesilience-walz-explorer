@@ -12,15 +12,16 @@ test_that("comparison controls, status, variables, and protocols render", {
     regexpr("measurement_id", page_html, fixed = TRUE)[[1]]
   )
   expect_match(page_html, "Dew-Point Calculation", fixed = TRUE)
-  expect_match(page_html, "dew_humidity_mode", fixed = TRUE)
-  expect_match(page_html, "dew_h2o_ppm", fixed = TRUE)
-  expect_match(page_html, "dew_relative_humidity", fixed = TRUE)
-  expect_match(page_html, "dew_couple_temperatures", fixed = TRUE)
+  expect_match(page_html, "dew_water_mode", fixed = TRUE)
+  expect_match(page_html, "dew_outlet_h2o_ppm", fixed = TRUE)
+  expect_match(page_html, "dew_inlet_h2o_ppm", fixed = TRUE)
+  expect_match(page_html, "dew_leaf_h2o_added_ppm", fixed = TRUE)
+  expect_false(grepl("dew_couple_temperatures", page_html, fixed = TRUE))
   expect_match(page_html, "dew_safety_buffer", fixed = TRUE)
   expect_match(page_html, "dew_point_plan_plot", fixed = TRUE)
   expect_match(
     page_html,
-    "Tamb = Tcuv + safety margin",
+    "inlet setpoint alone non-conservative",
     fixed = TRUE
   )
   expect_match(page_html, "dew_point_audit_plot", fixed = TRUE)
@@ -78,12 +79,12 @@ test_that("comparison controls, status, variables, and protocols render", {
       measurement_id = "primary-id",
       overlay_enabled = FALSE,
       show_grid = FALSE,
-      dew_humidity_mode = "ppm",
-      dew_h2o_ppm = 15000,
-      dew_relative_humidity = 60,
+      dew_water_mode = "outlet",
+      dew_outlet_h2o_ppm = 15000,
+      dew_inlet_h2o_ppm = 15000,
+      dew_leaf_h2o_added_ppm = 2000,
       dew_tcuv = 22,
       dew_tamb = 20,
-      dew_couple_temperatures = FALSE,
       dew_pamb = 100,
       dew_safety_buffer = 2
     )
@@ -103,8 +104,9 @@ test_that("comparison controls, status, variables, and protocols render", {
     expect_match(output$variable_selector$html, "name=\"environmental_variables\" value=\"Tamb\" checked", fixed = TRUE)
     expect_match(output$variable_selector$html, "value=\"Tleaf\"", fixed = TRUE)
     expect_match(output$variable_selector$html, "value=\"Area\"", fixed = TRUE)
-    expect_match(output$dew_point_results$html, "Tube-condensation warning", fixed = TRUE)
-    expect_match(output$dew_point_results$html, "tube", fixed = TRUE)
+    expect_match(output$dew_point_results$html, "Cuvette cold point clears margin", fixed = TRUE)
+    expect_match(output$dew_point_results$html, "Tubing cold point clears margin", fixed = TRUE)
+    expect_match(output$dew_point_results$html, "Manual context", fixed = TRUE)
     expect_null(dew_point_plan_widget_result()$error)
     expect_s3_class(dew_point_plan_widget_result()$value, "plotly")
     expect_length(
@@ -118,25 +120,19 @@ test_that("comparison controls, status, variables, and protocols render", {
     )
     expect_match(
       output$dew_point_audit_heading$html,
-      "recorded wa [ppm] and Pamb [kPa]",
+      "actual recorded wa [ppm] and Pamb [kPa]",
+      fixed = TRUE
+    )
+    expect_match(
+      output$dew_point_audit_heading$html,
+      "VPD × Pamb / 1000",
       fixed = TRUE
     )
     expect_null(dew_point_audit_widget_result()$error)
     expect_s3_class(dew_point_audit_widget_result()$value, "plotly")
     expect_length(dew_point_audit_widget_result()$value$x$data, 4L)
-    expect_match(output$dew_point_audit_alert$html, "Tcuv exceeded Tamb", fixed = TRUE)
-
-    session$setInputs(dew_couple_temperatures = TRUE)
-    session$flushReact()
-    expect_equal(
-      dew_point_plan_result()$value$temperature_order_margin_c,
-      2
-    )
-    expect_match(
-      output$dew_point_results$html,
-      "Selected temperatures clear the safety margin",
-      fixed = TRUE
-    )
+    expect_match(output$dew_point_audit_alert$html, "No recorded row reached the dew point", fixed = TRUE)
+    expect_match(output$dew_point_audit_alert$html, "Tcuv was above Tamb", fixed = TRUE)
 
     variable_html <- output$variable_selector$html
     expect_lt(
@@ -228,12 +224,12 @@ test_that("missing audit columns render inline without disabling the planner", {
     session$setInputs(
       measurement_id = "primary-id",
       overlay_enabled = FALSE,
-      dew_humidity_mode = "ppm",
-      dew_h2o_ppm = 15000,
-      dew_relative_humidity = 60,
+      dew_water_mode = "outlet",
+      dew_outlet_h2o_ppm = 15000,
+      dew_inlet_h2o_ppm = 15000,
+      dew_leaf_h2o_added_ppm = 2000,
       dew_tcuv = 22,
       dew_tamb = 20,
-      dew_couple_temperatures = FALSE,
       dew_pamb = 100,
       dew_safety_buffer = 2
     )

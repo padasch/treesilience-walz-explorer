@@ -13,7 +13,7 @@ No WALZ measurements, Google credentials, or thesis files are stored in this rep
 - Defaults for `A`, `GH2O`, `Tcuv`, `Tamb`, `VPD`, `rh`, `ca`, `ci`, `White x T`, and `PARtop`
 - An optional two-run overlay aligned at elapsed minute zero, with original timestamps retained in hover text
 - A second interactive **A vs state** view controlled by the same variable checkboxes
-- A **Dew-Point Calculation** tab with interactive planning sliders, optional `Tamb = Tcuv + safety margin` coupling, a visual temperature-safety comparison, and a four-line audit of the primary recorded run
+- A **Dew-Point Calculation** tab with interactive planning sliders, separate cuvette and tubing safety checks, a visual temperature comparison, and a four-line audit of the primary recorded run
 - Plotly zoom, pan, hover, line drawing, freehand drawing, erasing, and an optional 15-minute time grid
 - The raw matched protocol TXT file for each displayed run, shown as escaped text
 - Persistent warnings for Drive failures, malformed CSV files, missing variables, and missing or ambiguous protocols
@@ -21,9 +21,18 @@ No WALZ measurements, Google credentials, or thesis files are stored in this rep
 
 ## Dew-point calculation
 
-The planning calculator accepts expected cuvette H2O in ppm or relative humidity at `Tcuv`. Its Plotly comparison shows dew point, dew point plus the selected safety margin, `Tcuv - 2°C`, `Tcuv`, and `Tamb`. A switch couples the temperatures as `Tamb = Tcuv + safety margin`. When uncoupled, `Tcuv > Tamb` always produces a caution because the manual identifies that temperature order as a tube-condensation risk. For planning, the H2O value should conservatively represent expected cuvette or outlet humidity because the inlet setpoint alone can underestimate humidity after leaf transpiration.
+The planning calculator starts from the wettest air expected to leave the cuvette. The recommended mode accepts a conservative expected chamber/outlet `wa` in ppm. An alternative planning mode adds controlled inlet H2O and an estimated H2O increase from leaf transpiration. The inlet setpoint alone is not treated as the outlet humidity because the sample can add substantial water vapour.
 
-The selected primary run is audited row by row using the actual recorded `wa` and `Pamb` values to calculate dew point, together with the recorded `Tcuv` and `Tamb`; overlay runs are intentionally excluded from this tab. A dynamic warning reports observations where `Tcuv` exceeded `Tamb`.
+The Plotly comparison shows dew point, dew point plus the selected safety margin, `Tcuv - 2°C`, `Tcuv`, and the coldest expected tube or instrument-environment temperature represented by `Tamb`. The app evaluates two independent clearances:
+
+- Internal cuvette clearance: `(Tcuv - 2°C) - dew point`
+- Tubing clearance: `Tamb - dew point`
+
+Each clearance is compared with the user-selected safety margin. `Tcuv > Tamb` is shown as manual context because warm humid air may cool downstream, but this temperature order is not itself classified as condensation when `Tamb` remains safely above dew point.
+
+The selected primary run is audited row by row using the actual recorded `wa` and `Pamb` values to calculate dew point, together with the recorded `Tcuv` and `Tamb`; overlay runs are intentionally excluded from this tab. The audit reports actual dew-point crossings and observations that fall within the selected safety margin. `Tcuv > Tamb` is reported separately as context.
+
+The WALZ CSV field `VPD [Pa/kPa]` is normalized leaf-to-air vapour pressure deficit, not ordinary VPD in kPa. Convert it using `VPD [kPa] = VPD [Pa/kPa] × Pamb [kPa] / 1000`. The dew-point calculation therefore uses recorded `wa` and `Pamb`, not the VPD column.
 
 Saturation vapor pressure follows the Goff-Gratch relationship documented in the [official GFS-3000 manual](https://www.walz.com/files/downloads/gfs-3000_manual_9.pdf). The `Tcuv - 2°C` curve represents the manual's estimate of the coldest internal cuvette location during strong cooling and remains independent of the user-selected safety buffer. The calculator is a planning and uploaded-run analysis tool, not a live equipment interlock.
 

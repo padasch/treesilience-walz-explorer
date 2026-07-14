@@ -71,6 +71,10 @@ relative_humidity_from_h2o_ppm <- function(h2o_ppm, pamb_kpa, tcuv_c) {
   100 * vapor_pressure_kpa / gfs_saturation_vapor_pressure(tcuv_c)
 }
 
+walz_vpd_to_kpa <- function(vpd_pa_per_kpa, pamb_kpa) {
+  as.numeric(vpd_pa_per_kpa) * as.numeric(pamb_kpa) / 1000
+}
+
 validate_planner_number <- function(value, label, lower, upper) {
   if (
     length(value) != 1L ||
@@ -87,15 +91,26 @@ validate_planner_number <- function(value, label, lower, upper) {
   as.numeric(value)
 }
 
+dew_point_margin_status <- function(margin_c, safety_buffer_c) {
+  if (margin_c <= 0) {
+    "danger"
+  } else if (margin_c < safety_buffer_c) {
+    "caution"
+  } else {
+    "safe"
+  }
+}
+
 calculate_dew_point_plan <- function(
-    humidity_mode = c("ppm", "rh"),
+    water_mode = c("outlet", "inlet_plus"),
     tcuv_c,
     tamb_c,
     pamb_kpa,
-    h2o_ppm = NA_real_,
-    relative_humidity = NA_real_,
+    outlet_h2o_ppm = NA_real_,
+    inlet_h2o_ppm = NA_real_,
+    leaf_h2o_added_ppm = NA_real_,
     safety_buffer_c = 2) {
-  humidity_mode <- match.arg(humidity_mode)
+  water_mode <- match.arg(water_mode)
   tcuv_c <- validate_planner_number(tcuv_c, "Cuvette temperature", -10, 50)
   tamb_c <- validate_planner_number(tamb_c, "Ambient temperature", -10, 55)
   pamb_kpa <- validate_planner_number(pamb_kpa, "Ambient pressure", 60, 110)
@@ -106,35 +121,43 @@ calculate_dew_point_plan <- function(
     5
   )
 
-  if (humidity_mode == "ppm") {
-    h2o_ppm <- validate_planner_number(
-      h2o_ppm,
-      "Expected chamber H2O",
+  if (water_mode == "outlet") {
+    outlet_h2o_ppm <- validate_planner_number(
+      outlet_h2o_ppm,
+      "Expected chamber/outlet H2O",
       100,
       75000
     )
-    dew_point_c <- dew_point_from_h2o_ppm(h2o_ppm, pamb_kpa)
-    relative_humidity <- relative_humidity_from_h2o_ppm(
-      h2o_ppm,
-      pamb_kpa,
-      tcuv_c
-    )
+    inlet_h2o_ppm <- NA_real_
+    leaf_h2o_added_ppm <- NA_real_
   } else {
-    relative_humidity <- validate_planner_number(
-      relative_humidity,
-      "Relative humidity",
-      1,
-      100
+    inlet_h2o_ppm <- validate_planner_number(
+      inlet_h2o_ppm,
+      "Controlled inlet H2O",
+      100,
+      75000
     )
-    dew_point_c <- dew_point_from_relative_humidity(
-      tcuv_c,
-      relative_humidity
+    leaf_h2o_added_ppm <- validate_planner_number(
+      leaf_h2o_added_ppm,
+      "Expected leaf-added H2O",
+      0,
+      50000
     )
-    h2o_ppm <-
-      relative_humidity / 100 *
-      gfs_saturation_vapor_pressure(tcuv_c) /
-      pamb_kpa * 1e6
+    outlet_h2o_ppm <- inlet_h2o_ppm + leaf_h2o_added_ppm
+    if (outlet_h2o_ppm > 75000) {
+      stop(
+        "Inlet H2O plus expected leaf-added H2O must not exceed 75000 ppm.",
+        call. = FALSE
+      )
+    }
   }
+
+  dew_point_c <- dew_point_from_h2o_ppm(outlet_h2o_ppm, pamb_kpa)
+  relative_humidity <- relative_humidity_from_h2o_ppm(
+    outlet_h2o_ppm,
+    pamb_kpa,
+    tcuv_c
+  )
 
   if (!is.finite(dew_point_c)) {
     stop("The selected conditions do not produce a valid dew point.", call. = FALSE)
@@ -153,17 +176,20 @@ calculate_dew_point_plan <- function(
   temperature_order_margin_c <- tamb_c - tcuv_c
   cuvette_above_ambient <- tcuv_c > tamb_c
   safety_threshold_c <- dew_point_c + safety_buffer_c
-  status <- if (limiting_margin_c <= 0) {
-    "danger"
-  } else if (cuvette_above_ambient || limiting_margin_c < safety_buffer_c) {
-    "caution"
-  } else {
-    "safe"
-  }
+  tubing_status <- dew_point_margin_status(ambient_margin_c, safety_buffer_c)
+  internal_status <- dew_point_margin_status(internal_margin_c, safety_buffer_c)
+  status_order <- c(safe = 1L, caution = 2L, danger = 3L)
+  status <- names(which.max(c(
+    tubing = status_order[[tubing_status]],
+    internal = status_order[[internal_status]]
+  )))
+  status <- if (status == "tubing") tubing_status else internal_status
 
   list(
-    humidity_mode = humidity_mode,
+    water_mode = water_mode,
     dew_point_c = unname(dew_point_c),
+    tcuv_c = tcuv_c,
+    tamb_c = tamb_c,
     ambient_margin_c = unname(ambient_margin_c),
     internal_reference_c = unname(internal_reference_c),
     internal_margin_c = unname(internal_margin_c),
@@ -175,41 +201,13 @@ calculate_dew_point_plan <- function(
     cuvette_above_ambient = cuvette_above_ambient,
     safety_threshold_c = unname(safety_threshold_c),
     safety_buffer_c = safety_buffer_c,
-    h2o_ppm = unname(h2o_ppm),
+    outlet_h2o_ppm = unname(outlet_h2o_ppm),
+    inlet_h2o_ppm = unname(inlet_h2o_ppm),
+    leaf_h2o_added_ppm = unname(leaf_h2o_added_ppm),
     relative_humidity = unname(relative_humidity),
+    tubing_status = tubing_status,
+    internal_status = internal_status,
     status = status
-  )
-}
-
-dew_point_temperature_order_summary <- function(parsed) {
-  required <- c("Tcuv", "Tamb")
-  missing <- setdiff(required, names(parsed$data))
-  if (length(missing) > 0L) {
-    stop(
-      sprintf(
-        "The selected run is missing required temperature column(s): %s.",
-        paste(missing, collapse = ", ")
-      ),
-      call. = FALSE
-    )
-  }
-
-  tcuv <- as.numeric(parsed$data$Tcuv)
-  tamb <- as.numeric(parsed$data$Tamb)
-  valid <- is.finite(tcuv) & is.finite(tamb)
-  if (!any(valid)) {
-    stop(
-      "The selected run contains no valid paired Tcuv and Tamb values.",
-      call. = FALSE
-    )
-  }
-
-  excess <- tcuv[valid] - tamb[valid]
-  warmer <- excess > 0
-  list(
-    valid_count = sum(valid),
-    warning_count = sum(warmer),
-    maximum_excess_c = if (any(warmer)) max(excess[warmer]) else 0
   )
 }
 
@@ -241,6 +239,63 @@ conservative_run_values <- function(parsed) {
     tamb_c = finite_value(parsed$data$Tamb, min, "Tamb"),
     tcuv_c = finite_value(parsed$data$Tcuv, stats::median, "Tcuv"),
     pamb_kpa = finite_value(parsed$data$Pamb, stats::median, "Pamb")
+  )
+}
+
+dew_point_audit_summary <- function(parsed, safety_buffer_c = 2) {
+  safety_buffer_c <- validate_planner_number(
+    safety_buffer_c,
+    "Safety buffer",
+    0,
+    5
+  )
+  missing <- setdiff(DEW_POINT_REQUIRED_COLUMNS, names(parsed$data))
+  if (length(missing) > 0L) {
+    stop(
+      sprintf(
+        "The selected run is missing required dew-point column(s): %s.",
+        paste(missing, collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
+
+  data <- parsed$data
+  dew_point_c <- dew_point_from_h2o_ppm(data$wa, data$Pamb)
+  tube_margin_c <- as.numeric(data$Tamb) - dew_point_c
+  internal_margin_c <- as.numeric(data$Tcuv) - 2 - dew_point_c
+  valid <- is.finite(tube_margin_c) & is.finite(internal_margin_c)
+  if (!any(valid)) {
+    stop(
+      "The selected run contains no valid dew-point audit values.",
+      call. = FALSE
+    )
+  }
+
+  tube_margin_c <- tube_margin_c[valid]
+  internal_margin_c <- internal_margin_c[valid]
+  tcuv <- as.numeric(data$Tcuv)[valid]
+  tamb <- as.numeric(data$Tamb)[valid]
+  summarize_margin <- function(margin_c) {
+    list(
+      minimum_margin_c = min(margin_c),
+      danger_count = sum(margin_c <= 0),
+      caution_count = sum(margin_c > 0 & margin_c < safety_buffer_c),
+      status = dew_point_margin_status(min(margin_c), safety_buffer_c)
+    )
+  }
+
+  list(
+    valid_count = sum(valid),
+    safety_buffer_c = safety_buffer_c,
+    tubing = summarize_margin(tube_margin_c),
+    internal = summarize_margin(internal_margin_c),
+    cuvette_above_ambient_count = sum(tcuv > tamb),
+    maximum_cuvette_excess_c = if (any(tcuv > tamb)) {
+      max(tcuv[tcuv > tamb] - tamb[tcuv > tamb])
+    } else {
+      0
+    }
   )
 }
 

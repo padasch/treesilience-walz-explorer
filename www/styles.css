@@ -301,6 +301,12 @@ body {
   padding: 0.9rem 1rem;
 }
 
+.dew-status-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .dew-status span {
   font-size: 0.84rem;
 }
@@ -323,6 +329,12 @@ body {
   color: #7c2d28;
 }
 
+.dew-calculation-summary {
+  color: var(--walz-muted);
+  font-size: 0.86rem;
+  margin: 0 0 0.9rem;
+}
+
 .dew-audit-source {
   color: var(--walz-muted);
   font-size: 0.85rem;
@@ -342,6 +354,10 @@ body {
 
 @media (max-width: 700px) {
   .dew-planner-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dew-status-grid {
     grid-template-columns: 1fr;
   }
 
