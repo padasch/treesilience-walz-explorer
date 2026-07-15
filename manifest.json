@@ -2309,10 +2309,13 @@
   },
   "files": {
     "app.R": {
-      "checksum": "8fa06fb04ccf209efcd5cff2671e9bae"
+      "checksum": "2aad2488984bdbf528e77342c8212630"
+    },
+    "docs/dew-point-condensation-notes.md": {
+      "checksum": "c9ffd7a03ae2ade5b2bfe060c92998f9"
     },
     "R/config.R": {
-      "checksum": "78650f6b3a43494230418f2f48bb083c"
+      "checksum": "698737b149bc6de6ac9d7d2b01b6ed31"
     },
     "R/dew_point.R": {
       "checksum": "eb78baf425164da485100236a1fbfa24"

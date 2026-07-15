@@ -173,8 +173,7 @@ ui <- bslib::page_sidebar(
     shiny::h2("Explore gas-exchange runs without code"),
     shiny::p(
       "Zoom, pan, hover over observations, or draw directly on the plots. ",
-      "Selected variables control both the timeseries and A-versus-state views; ",
-      "the dew-point tab supports planning and recorded-run checks."
+      "Selected variables control both the timeseries and A-versus-state views."
     )
   ),
   shiny::uiOutput("selected_file_heading"),
@@ -192,9 +191,10 @@ ui <- bslib::page_sidebar(
       shiny::uiOutput("state_alerts"),
       plotly::plotlyOutput("state_plot", height = "850px")
     ),
-    bslib::nav_panel(
-      "Dew-Point Calculation",
-      shiny::div(
+    if (isTRUE(config$enable_dew_point_tab)) {
+      bslib::nav_panel(
+        "Dew-Point Calculation",
+        shiny::div(
         class = "dew-point-tab",
         shiny::div(
           class = "dew-point-introduction",
@@ -321,8 +321,9 @@ ui <- bslib::page_sidebar(
           shiny::uiOutput("dew_point_audit_alert"),
           plotly::plotlyOutput("dew_point_audit_plot", height = "650px")
         )
+        )
       )
-    )
+    }
   )
 )
 

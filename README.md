@@ -13,28 +13,18 @@ No WALZ measurements, Google credentials, or thesis files are stored in this rep
 - Defaults for `A`, `GH2O`, `Tcuv`, `Tamb`, `VPD`, `rh`, `ca`, `ci`, `White x T`, and `PARtop`
 - An optional two-run overlay aligned at elapsed minute zero, with original timestamps retained in hover text
 - A second interactive **A vs state** view controlled by the same variable checkboxes
-- A **Dew-Point Calculation** tab with interactive planning sliders, separate cuvette and tubing safety checks, a visual temperature comparison, and a four-line audit of the primary recorded run
 - Plotly zoom, pan, hover, line drawing, freehand drawing, erasing, and an optional 15-minute time grid
 - The raw matched protocol TXT file for each displayed run, shown as escaped text
 - Persistent warnings for Drive failures, malformed CSV files, missing variables, and missing or ambiguous protocols
 - A direct link to the public Google Drive folder in the Drive status section
 
-## Dew-point calculation
+## Dew-point calculation status
 
-The planning calculator starts from the wettest air expected to leave the cuvette. The recommended mode accepts a conservative expected chamber/outlet `wa` in ppm. An alternative planning mode adds controlled inlet H2O and an estimated H2O increase from leaf transpiration. The inlet setpoint alone is not treated as the outlet humidity because the sample can add substantial water vapour.
+The Dew-Point Calculation tab is currently disabled. Observed condensation could not be reconciled safely with a calculator that uses recorded downstream `wa` and a single `Tamb` value as a proxy for the coldest wetted surface. The calculations remain in the source for later investigation, but they are not presented in the public student-facing app.
 
-The Plotly comparison shows dew point, dew point plus the selected safety margin, `Tcuv - 2°C`, `Tcuv`, and the coldest expected tube or instrument-environment temperature represented by `Tamb`. The app evaluates two independent clearances:
+The reasoning, example calculations, instrument-flow limitation, and recommended diagnostic measurements are documented in [Dew-point condensation notes](docs/dew-point-condensation-notes.md).
 
-- Internal cuvette clearance: `(Tcuv - 2°C) - dew point`
-- Tubing clearance: `Tamb - dew point`
-
-Each clearance is compared with the user-selected safety margin. `Tcuv > Tamb` is shown as manual context because warm humid air may cool downstream, but this temperature order is not itself classified as condensation when `Tamb` remains safely above dew point.
-
-The selected primary run is audited row by row using the actual recorded `wa` and `Pamb` values to calculate dew point, together with the recorded `Tcuv` and `Tamb`; overlay runs are intentionally excluded from this tab. The audit reports actual dew-point crossings and observations that fall within the selected safety margin. `Tcuv > Tamb` is reported separately as context.
-
-The WALZ CSV field `VPD [Pa/kPa]` is normalized leaf-to-air vapour pressure deficit, not ordinary VPD in kPa. Convert it using `VPD [kPa] = VPD [Pa/kPa] × Pamb [kPa] / 1000`. The dew-point calculation therefore uses recorded `wa` and `Pamb`, not the VPD column.
-
-Saturation vapor pressure follows the Goff-Gratch relationship documented in the [official GFS-3000 manual](https://www.walz.com/files/downloads/gfs-3000_manual_9.pdf). The `Tcuv - 2°C` curve represents the manual's estimate of the coldest internal cuvette location during strong cooling and remains independent of the user-selected safety buffer. The calculator is a planning and uploaded-run analysis tool, not a live equipment interlock.
+For development review only, the hidden tab can be enabled with `WALZ_ENABLE_DEW_POINT_TAB=true`. It must not be interpreted as an equipment interlock or proof that a setup is condensation-safe.
 
 The [public Google Drive folder](https://drive.google.com/drive/folders/1wC9zXLEWQe4z7jBxfBfPRiVBuPJiF8vE) must contain direct child folders named `measurements` and `protocols`. Only `.csv` files in `measurements` and `.txt` files in `protocols` are listed.
 
@@ -44,6 +34,7 @@ The app uses `googledrive::drive_deauth()` for non-interactive access to files t
 
 - `WALZ_DRIVE_FOLDER_ID`: replace the default root folder ID
 - `GOOGLE_DRIVE_API_KEY`: replace the built-in API key
+- `WALZ_ENABLE_DEW_POINT_TAB`: set to `true` only for development review of the disabled calculator
 
 Downloaded content is cached in the running R process by Drive file ID and `modifiedTime`. If the package's shared API-key download is temporarily unavailable, the app falls back to Google's public file-download URL. Refreshing the app's file list exposes new or updated Drive data without publishing new code.
 

@@ -1,5 +1,6 @@
 WALZ_DEFAULT_DRIVE_FOLDER_ID <- "1wC9zXLEWQe4z7jBxfBfPRiVBuPJiF8vE"
 WALZ_TIMEZONE <- "Europe/Zurich"
+WALZ_ENABLE_DEW_POINT_TAB <- FALSE
 WALZ_RESPONSE_VARIABLES <- c("A", "GH2O", "E")
 WALZ_PHYSIOLOGICAL_CONSTANTS <- "Area"
 WALZ_PLOT_VARIABLES <- c(
@@ -30,6 +31,13 @@ walz_config <- function() {
       unset = WALZ_DEFAULT_DRIVE_FOLDER_ID
     ),
     api_key = Sys.getenv("GOOGLE_DRIVE_API_KEY", unset = ""),
+    enable_dew_point_tab = identical(
+      tolower(Sys.getenv(
+        "WALZ_ENABLE_DEW_POINT_TAB",
+        unset = as.character(WALZ_ENABLE_DEW_POINT_TAB)
+      )),
+      "true"
+    ),
     timezone = WALZ_TIMEZONE,
     plot_variables = WALZ_PLOT_VARIABLES
   )

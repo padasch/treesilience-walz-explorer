@@ -1,8 +1,9 @@
-test_that("comparison controls, status, variables, and protocols render", {
+test_that("comparison controls, variables, and protocols render without dew tab", {
   skip_if_not_installed("shiny")
   skip_if_not_installed("bslib")
 
   withr::local_dir(project_root)
+  withr::local_envvar(WALZ_ENABLE_DEW_POINT_TAB = "false")
   app_environment <- new.env(parent = globalenv())
   source("app.R", local = app_environment)
 
@@ -11,20 +12,15 @@ test_that("comparison controls, status, variables, and protocols render", {
     regexpr("source_status", page_html, fixed = TRUE)[[1]],
     regexpr("measurement_id", page_html, fixed = TRUE)[[1]]
   )
-  expect_match(page_html, "Dew-Point Calculation", fixed = TRUE)
-  expect_match(page_html, "dew_water_mode", fixed = TRUE)
-  expect_match(page_html, "dew_outlet_h2o_ppm", fixed = TRUE)
-  expect_match(page_html, "dew_inlet_h2o_ppm", fixed = TRUE)
-  expect_match(page_html, "dew_leaf_h2o_added_ppm", fixed = TRUE)
+  expect_false(grepl("Dew-Point Calculation", page_html, fixed = TRUE))
+  expect_false(grepl("dew_water_mode", page_html, fixed = TRUE))
+  expect_false(grepl("dew_outlet_h2o_ppm", page_html, fixed = TRUE))
+  expect_false(grepl("dew_inlet_h2o_ppm", page_html, fixed = TRUE))
+  expect_false(grepl("dew_leaf_h2o_added_ppm", page_html, fixed = TRUE))
   expect_false(grepl("dew_couple_temperatures", page_html, fixed = TRUE))
-  expect_match(page_html, "dew_safety_buffer", fixed = TRUE)
-  expect_match(page_html, "dew_point_plan_plot", fixed = TRUE)
-  expect_match(
-    page_html,
-    "inlet setpoint alone non-conservative",
-    fixed = TRUE
-  )
-  expect_match(page_html, "dew_point_audit_plot", fixed = TRUE)
+  expect_false(grepl("dew_safety_buffer", page_html, fixed = TRUE))
+  expect_false(grepl("dew_point_plan_plot", page_html, fixed = TRUE))
+  expect_false(grepl("dew_point_audit_plot", page_html, fixed = TRUE))
 
   parsed <- dew_point_fixture()
   modified <- as.POSIXct("2026-07-13 16:27:42", tz = "UTC")
@@ -183,6 +179,22 @@ test_that("comparison controls, status, variables, and protocols render", {
     expect_s3_class(state_widget_result()$value, "plotly")
     expect_length(dew_point_audit_widget_result()$value$x$data, 4L)
   })
+})
+
+test_that("dew-point tab requires explicit development opt-in", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("bslib")
+
+  withr::local_dir(project_root)
+  withr::local_envvar(WALZ_ENABLE_DEW_POINT_TAB = "true")
+  app_environment <- new.env(parent = globalenv())
+  source("app.R", local = app_environment)
+
+  page_html <- htmltools::renderTags(app_environment$ui)$html
+  expect_match(page_html, "Dew-Point Calculation", fixed = TRUE)
+  expect_match(page_html, "dew_water_mode", fixed = TRUE)
+  expect_match(page_html, "dew_point_plan_plot", fixed = TRUE)
+  expect_match(page_html, "dew_point_audit_plot", fixed = TRUE)
 })
 
 test_that("missing audit columns render inline without disabling the planner", {

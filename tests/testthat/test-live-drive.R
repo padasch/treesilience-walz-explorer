@@ -41,7 +41,7 @@ test_that("the public Drive source has the validated WALZ structure and files", 
     audit <- dew_point_audit_data(parsed)
     expect_equal(levels(audit$Series), DEW_POINT_SERIES, info = record$name)
     audit_summary <- dew_point_audit_summary(parsed, safety_buffer_c = 2)
-    expect_gt(audit_summary$valid_count, 0L, info = record$name)
+    expect_gt(audit_summary$valid_count, 0L)
 
     matched <- match_protocol(record$name[[1]], index$protocols)
     expect_equal(matched$status, "matched", info = record$name)
