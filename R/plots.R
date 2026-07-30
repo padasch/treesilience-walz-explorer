@@ -201,30 +201,6 @@ panel_levels_for_variables <- function(variables, parsed_runs) {
   }, character(1))
 }
 
-fifteen_minute_breaks <- function(datetimes) {
-  limits <- range(datetimes, na.rm = TRUE)
-  start <- as.POSIXct(
-    floor(as.numeric(limits[[1]]) / (15 * 60)) * (15 * 60),
-    origin = "1970-01-01",
-    tz = WALZ_TIMEZONE
-  )
-  end <- as.POSIXct(
-    ceiling(as.numeric(limits[[2]]) / (15 * 60)) * (15 * 60),
-    origin = "1970-01-01",
-    tz = WALZ_TIMEZONE
-  )
-  seq(start, end, by = "15 min")
-}
-
-fifteen_minute_elapsed_breaks <- function(elapsed_minutes) {
-  limits <- range(elapsed_minutes, na.rm = TRUE)
-  seq(
-    floor(limits[[1]] / 15) * 15,
-    ceiling(limits[[2]] / 15) * 15,
-    by = 15
-  )
-}
-
 walz_plot_theme <- function() {
   ggplot2::theme_minimal(base_size = 12) +
     ggplot2::theme(
@@ -277,7 +253,6 @@ plotly_controls <- function(widget) {
 
 make_timeseries_plot <- function(
     parsed_runs,
-    show_grid = FALSE,
     time_axis = c("elapsed", "local"),
     variables = WALZ_PLOT_VARIABLES,
     run_labels = NULL,
@@ -365,21 +340,10 @@ make_timeseries_plot <- function(
 
   if (identical(time_axis, "local")) {
     date_labels <- if (overlay) "%d %b\n%H:%M" else "%H:%M"
-    if (isTRUE(show_grid)) {
-      plot <- plot + ggplot2::scale_x_datetime(
-        breaks = fifteen_minute_breaks(long$Datetime),
-        date_labels = date_labels
-      )
-    } else {
-      plot <- plot + ggplot2::scale_x_datetime(date_labels = date_labels)
-    }
-    plot <- plot + ggplot2::labs(x = "Local time (Europe/Zurich)")
+    plot <- plot +
+      ggplot2::scale_x_datetime(date_labels = date_labels) +
+      ggplot2::labs(x = "Local time (Europe/Zurich)")
   } else {
-    if (isTRUE(show_grid)) {
-      plot <- plot + ggplot2::scale_x_continuous(
-        breaks = fifteen_minute_elapsed_breaks(long$ElapsedMinutes)
-      )
-    }
     plot <- plot + ggplot2::labs(x = "Elapsed time from run start (minutes)")
   }
 

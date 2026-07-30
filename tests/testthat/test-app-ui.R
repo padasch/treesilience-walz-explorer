@@ -8,9 +8,13 @@ test_that("multi-run controls, metadata, plots, and protocols stay synchronized"
   source("app.R", local = app_environment)
 
   page_html <- htmltools::renderTags(app_environment$ui)$html
-  expect_lt(
+  expect_gt(
     regexpr("source_status", page_html, fixed = TRUE)[[1]],
     regexpr("measurement_ids", page_html, fixed = TRUE)[[1]]
+  )
+  expect_gt(
+    regexpr("source_status", page_html, fixed = TRUE)[[1]],
+    regexpr("refresh_latest", page_html, fixed = TRUE)[[1]]
   )
   expect_match(page_html, "measurement_ids", fixed = TRUE)
   expect_match(page_html, "multiple", fixed = TRUE)
@@ -19,6 +23,8 @@ test_that("multi-run controls, metadata, plots, and protocols stay synchronized"
   expect_match(page_html, "run_metadata_panel", fixed = TRUE)
   expect_false(grepl("overlay_enabled", page_html, fixed = TRUE))
   expect_false(grepl("comparison_id", page_html, fixed = TRUE))
+  expect_false(grepl("show_grid", page_html, fixed = TRUE))
+  expect_false(grepl("15-minute time grid", page_html, fixed = TRUE))
   expect_false(grepl("Dew-Point Calculation", page_html, fixed = TRUE))
 
   parsed <- dew_point_fixture()
@@ -82,8 +88,7 @@ test_that("multi-run controls, metadata, plots, and protocols stay synchronized"
       response_variables = c("A", "GH2O"),
       environmental_variables = c("Tcuv", "Tamb", "PARtop"),
       constant_variables = character(),
-      time_axis_mode = "elapsed",
-      show_grid = TRUE
+      time_axis_mode = "elapsed"
     )
     session$flushReact()
     expect_setequal(

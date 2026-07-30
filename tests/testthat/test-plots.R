@@ -2,10 +2,9 @@ test_that("both established plot views build from a parsed WALZ file", {
   skip_if_not_installed("plotly")
   parsed <- read_walz_csv(fixture_path("walz_sample.csv"))
 
-  elapsed <- make_timeseries_plot(parsed, show_grid = TRUE)
+  elapsed <- make_timeseries_plot(parsed)
   local <- make_timeseries_plot(
     parsed,
-    show_grid = TRUE,
     time_axis = "local"
   )
   expect_s3_class(elapsed, "plotly")
@@ -88,14 +87,12 @@ test_that("any number of runs overlay from elapsed minute zero with unique color
   colors <- c("#28754D", "#BD5D38", "#426A8C")
   timeseries <- make_timeseries_plot(
     list(primary, comparison, third),
-    show_grid = TRUE,
     variables = c("A", "Tcuv", "PARtop"),
     run_labels = labels,
     run_colors = colors
   )
   local_timeseries <- make_timeseries_plot(
     list(primary, comparison, third),
-    show_grid = TRUE,
     time_axis = "local",
     variables = c("A", "Tcuv", "PARtop"),
     run_labels = labels,

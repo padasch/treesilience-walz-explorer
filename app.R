@@ -149,8 +149,6 @@ ui <- bslib::page_sidebar(
   fillable = FALSE,
   sidebar = bslib::sidebar(
     width = 510,
-    shiny::uiOutput("source_status"),
-    shiny::hr(),
     shiny::p(
       class = "sidebar-intro",
       "Choose one or more WALZ runs and how to display time."
@@ -187,11 +185,8 @@ ui <- bslib::page_sidebar(
       "Refresh and show latest",
       icon = shiny::icon("rotate")
     ),
-    shiny::checkboxInput(
-      "show_grid",
-      "Show 15-minute time grid",
-      value = FALSE
-    )
+    shiny::hr(),
+    shiny::uiOutput("source_status")
   ),
   shiny::includeCSS("www/styles.css"),
   shiny::div(
@@ -613,7 +608,6 @@ server <- function(input, output, session) {
       list(
         value = make_timeseries_plot(
           parsed_runs = lapply(entries, `[[`, "value"),
-          show_grid = isTRUE(input$show_grid),
           time_axis = if (is.null(input$time_axis_mode)) {
             "elapsed"
           } else {
