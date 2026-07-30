@@ -153,7 +153,7 @@ ui <- bslib::page_sidebar(
     shiny::hr(),
     shiny::p(
       class = "sidebar-intro",
-      "Choose one or more WALZ runs. Multiple runs are aligned at elapsed minute zero."
+      "Choose one or more WALZ runs and how to display time."
     ),
     shiny::selectizeInput(
       "measurement_ids",
@@ -170,6 +170,16 @@ ui <- bslib::page_sidebar(
     shiny::p(
       class = "control-help",
       "Add as many runs as needed. Remove a run with the × on its selection chip."
+    ),
+    shiny::radioButtons(
+      "time_axis_mode",
+      "Timeseries x axis",
+      choices = c(
+        "Elapsed time" = "elapsed",
+        "Local time" = "local"
+      ),
+      selected = "elapsed",
+      inline = TRUE
     ),
     shiny::uiOutput("variable_selector"),
     shiny::actionButton(
@@ -604,6 +614,11 @@ server <- function(input, output, session) {
         value = make_timeseries_plot(
           parsed_runs = lapply(entries, `[[`, "value"),
           show_grid = isTRUE(input$show_grid),
+          time_axis = if (is.null(input$time_axis_mode)) {
+            "elapsed"
+          } else {
+            input$time_axis_mode
+          },
           variables = selected_variables(),
           run_labels = vapply(entries, `[[`, character(1), "label"),
           run_colors = vapply(entries, `[[`, character(1), "colour")
@@ -1124,13 +1139,18 @@ server <- function(input, output, session) {
       }
     }
     if (length(valid_measurement_entries()) > 1L) {
-      alerts <- c(alerts, list(alert_ui(
+      alignment_message <- if (identical(input$time_axis_mode, "local")) {
+        paste0(
+          "Multi-run local time: each run retains its original Europe/Zurich ",
+          "timestamp, so runs recorded on different dates may be separated on the x axis."
+        )
+      } else {
         paste0(
           "Multi-run alignment: every run starts at elapsed minute zero. ",
           "Hover over a point to see its original timestamp."
-        ),
-        "info"
-      )))
+        )
+      }
+      alerts <- c(alerts, list(alert_ui(alignment_message, "info")))
     }
     if (length(selected_variables()) == 0L) {
       alerts <- c(alerts, list(alert_ui("Select at least one variable to plot.", "warning")))

@@ -11,7 +11,8 @@ No WALZ measurements, Google credentials, or thesis files are stored in this rep
 - Interactive timeseries panels with every numeric CSV variable available as a checkbox, grouped as response parameters, environmental parameters, and the physiological constant `Area`
 - Response parameters ordered as `A` (Net CO2), `GH2O`, and `E`, with `GH2O` selected by default
 - Defaults for `A`, `GH2O`, `Tcuv`, `Tamb`, `VPD`, `rh`, `ca`, `ci`, `White x T`, and `PARtop`
-- An arbitrary number of selected runs overlaid from elapsed minute zero, with a distinct color and line style for each run and original timestamps retained in hover text
+- A timeseries x-axis toggle between elapsed time (the default, aligned from minute zero) and the original local time in Europe/Zurich
+- An arbitrary number of selected runs overlaid with a distinct color and line style for each run and original timestamps retained in hover text
 - A live metadata table above the plots, joined by exact measurement filename stem to the sheet `timestamp` run ID; each row is tinted with its plot color
 - A second interactive **A vs state** view controlled by the same variable checkboxes
 - Plotly zoom, pan, cursor crosshairs, compact exact-value hover, line drawing, freehand drawing, erasing, and an optional 15-minute time grid

@@ -278,9 +278,11 @@ plotly_controls <- function(widget) {
 make_timeseries_plot <- function(
     parsed_runs,
     show_grid = FALSE,
+    time_axis = c("elapsed", "local"),
     variables = WALZ_PLOT_VARIABLES,
     run_labels = NULL,
     run_colors = NULL) {
+  time_axis <- match.arg(time_axis)
   if (length(variables) == 0L) {
     stop("Select at least one numeric variable to draw the timeseries.", call. = FALSE)
   }
@@ -320,12 +322,17 @@ make_timeseries_plot <- function(
   long$panel <- factor(long$panel, levels = unique(panel_levels))
   long$Run <- factor(long$Run, levels = run_labels)
   overlay <- length(parsed_runs) > 1L
+  x_variable <- if (identical(time_axis, "local")) {
+    "Datetime"
+  } else {
+    "ElapsedMinutes"
+  }
 
   if (overlay) {
     plot <- ggplot2::ggplot(
       long,
       ggplot2::aes(
-        x = ElapsedMinutes,
+        x = .data[[x_variable]],
         y = value,
         text = hover,
         colour = Run,
@@ -343,21 +350,21 @@ make_timeseries_plot <- function(
       ggplot2::scale_colour_manual(values = run_colors, drop = FALSE) +
       ggplot2::scale_linetype_manual(values = line_types, drop = FALSE) +
       ggplot2::labs(
-        x = "Elapsed time from run start (minutes)",
+        x = NULL,
         y = NULL,
         colour = "Measurement run",
         linetype = "Measurement run",
         shape = "Measurement run"
       )
-    if (isTRUE(show_grid)) {
-      plot <- plot + ggplot2::scale_x_continuous(
-        breaks = fifteen_minute_elapsed_breaks(long$ElapsedMinutes)
-      )
-    }
   } else {
     plot <- ggplot2::ggplot(
       long,
-      ggplot2::aes(x = Datetime, y = value, text = hover, group = variable)
+      ggplot2::aes(
+        x = .data[[x_variable]],
+        y = value,
+        text = hover,
+        group = variable
+      )
     ) +
       ggplot2::geom_line(
         linewidth = 0.55,
@@ -370,15 +377,27 @@ make_timeseries_plot <- function(
         alpha = 0.75,
         na.rm = TRUE
       ) +
-      ggplot2::labs(x = "Local time (Europe/Zurich)", y = NULL)
+      ggplot2::labs(x = NULL, y = NULL)
+  }
+
+  if (identical(time_axis, "local")) {
+    date_labels <- if (overlay) "%d %b\n%H:%M" else "%H:%M"
     if (isTRUE(show_grid)) {
       plot <- plot + ggplot2::scale_x_datetime(
         breaks = fifteen_minute_breaks(long$Datetime),
-        date_labels = "%H:%M"
+        date_labels = date_labels
       )
     } else {
-      plot <- plot + ggplot2::scale_x_datetime(date_labels = "%H:%M")
+      plot <- plot + ggplot2::scale_x_datetime(date_labels = date_labels)
     }
+    plot <- plot + ggplot2::labs(x = "Local time (Europe/Zurich)")
+  } else {
+    if (isTRUE(show_grid)) {
+      plot <- plot + ggplot2::scale_x_continuous(
+        breaks = fifteen_minute_elapsed_breaks(long$ElapsedMinutes)
+      )
+    }
+    plot <- plot + ggplot2::labs(x = "Elapsed time from run start (minutes)")
   }
 
   plot <- plot +

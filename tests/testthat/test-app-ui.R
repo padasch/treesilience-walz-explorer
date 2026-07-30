@@ -14,6 +14,8 @@ test_that("multi-run controls, metadata, plots, and protocols stay synchronized"
   )
   expect_match(page_html, "measurement_ids", fixed = TRUE)
   expect_match(page_html, "multiple", fixed = TRUE)
+  expect_match(page_html, "time_axis_mode", fixed = TRUE)
+  expect_match(page_html, "value=\"elapsed\" checked", fixed = TRUE)
   expect_match(page_html, "run_metadata_panel", fixed = TRUE)
   expect_false(grepl("overlay_enabled", page_html, fixed = TRUE))
   expect_false(grepl("comparison_id", page_html, fixed = TRUE))
@@ -80,6 +82,7 @@ test_that("multi-run controls, metadata, plots, and protocols stay synchronized"
       response_variables = c("A", "GH2O"),
       environmental_variables = c("Tcuv", "Tamb", "PARtop"),
       constant_variables = character(),
+      time_axis_mode = "elapsed",
       show_grid = TRUE
     )
     session$flushReact()
@@ -160,6 +163,40 @@ test_that("multi-run controls, metadata, plots, and protocols stay synchronized"
       built$x$layout[axis_names],
       function(axis) isTRUE(axis$showspikes),
       logical(1)
+    )))
+    elapsed_annotations <- vapply(
+      built$x$layout$annotations,
+      function(annotation) {
+        if (is.null(annotation$text)) "" else annotation$text
+      },
+      character(1)
+    )
+    expect_true(any(grepl(
+      "Elapsed time from run start",
+      elapsed_annotations,
+      fixed = TRUE
+    )))
+
+    session$setInputs(time_axis_mode = "local")
+    session$flushReact()
+    expect_match(
+      output$timeseries_alerts$html,
+      "each run retains its original Europe/Zurich timestamp",
+      fixed = TRUE
+    )
+    expect_null(timeseries_widget_result()$error)
+    local_built <- plotly::plotly_build(timeseries_widget_result()$value)
+    local_annotations <- vapply(
+      local_built$x$layout$annotations,
+      function(annotation) {
+        if (is.null(annotation$text)) "" else annotation$text
+      },
+      character(1)
+    )
+    expect_true(any(grepl(
+      "Local time (Europe/Zurich)",
+      local_annotations,
+      fixed = TRUE
     )))
 
     expect_match(output$protocol_panel$html, "Run 1 measurement protocol", fixed = TRUE)

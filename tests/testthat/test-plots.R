@@ -2,8 +2,40 @@ test_that("both established plot views build from a parsed WALZ file", {
   skip_if_not_installed("plotly")
   parsed <- read_walz_csv(fixture_path("walz_sample.csv"))
 
-  expect_s3_class(make_timeseries_plot(parsed, show_grid = TRUE), "plotly")
+  elapsed <- make_timeseries_plot(parsed, show_grid = TRUE)
+  local <- make_timeseries_plot(
+    parsed,
+    show_grid = TRUE,
+    time_axis = "local"
+  )
+  expect_s3_class(elapsed, "plotly")
+  expect_s3_class(local, "plotly")
   expect_s3_class(make_state_plot(parsed), "plotly")
+
+  annotation_text <- function(widget) {
+    built <- plotly::plotly_build(widget)
+    vapply(
+      built$x$layout$annotations,
+      function(annotation) {
+        if (is.null(annotation$text)) "" else annotation$text
+      },
+      character(1)
+    )
+  }
+  expect_true(any(grepl(
+    "Elapsed time from run start",
+    annotation_text(elapsed),
+    fixed = TRUE
+  )))
+  expect_true(any(grepl(
+    "Local time (Europe/Zurich)",
+    annotation_text(local),
+    fixed = TRUE
+  )))
+  expect_error(
+    make_timeseries_plot(parsed, time_axis = "unsupported"),
+    "'arg' should be one of"
+  )
 })
 
 test_that("numeric variables are grouped in physiological order", {
@@ -61,6 +93,14 @@ test_that("any number of runs overlay from elapsed minute zero with unique color
     run_labels = labels,
     run_colors = colors
   )
+  local_timeseries <- make_timeseries_plot(
+    list(primary, comparison, third),
+    show_grid = TRUE,
+    time_axis = "local",
+    variables = c("A", "Tcuv", "PARtop"),
+    run_labels = labels,
+    run_colors = colors
+  )
   state <- make_state_plot(
     list(primary, comparison, third),
     variables = c("A", "Tcuv", "PARtop"),
@@ -69,6 +109,7 @@ test_that("any number of runs overlay from elapsed minute zero with unique color
   )
 
   expect_s3_class(timeseries, "plotly")
+  expect_s3_class(local_timeseries, "plotly")
   expect_s3_class(state, "plotly")
 
   built <- plotly::plotly_build(timeseries)
@@ -83,6 +124,19 @@ test_that("any number of runs overlay from elapsed minute zero with unique color
     built$x$layout[axis_names],
     function(axis) identical(axis$spikemode, "across+toaxis"),
     logical(1)
+  )))
+  local_built <- plotly::plotly_build(local_timeseries)
+  local_annotations <- vapply(
+    local_built$x$layout$annotations,
+    function(annotation) {
+      if (is.null(annotation$text)) "" else annotation$text
+    },
+    character(1)
+  )
+  expect_true(any(grepl(
+    "Local time (Europe/Zurich)",
+    local_annotations,
+    fixed = TRUE
   )))
   expect_length(unique(run_palette(12)), 12L)
 })
