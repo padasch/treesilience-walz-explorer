@@ -198,15 +198,13 @@ ui <- bslib::page_sidebar(
       "Selected variables control both the timeseries and A-versus-state views."
     )
   ),
-  shiny::uiOutput("run_metadata_panel"),
   bslib::navset_card_tab(
     id = "plot_view",
     title = NULL,
     bslib::nav_panel(
       "Variables over time",
       shiny::uiOutput("timeseries_alerts"),
-      plotly::plotlyOutput("timeseries_plot", height = "900px"),
-      shiny::uiOutput("protocol_panel")
+      plotly::plotlyOutput("timeseries_plot", height = "900px")
     ),
     bslib::nav_panel(
       "A vs state",
@@ -347,7 +345,23 @@ ui <- bslib::page_sidebar(
       )
     }
   ),
-  shiny::uiOutput("full_metadata_panel")
+  bslib::accordion(
+    id = "detail_accordion",
+    open = "metadata_details",
+    multiple = TRUE,
+    class = "detail-accordion",
+    bslib::accordion_panel(
+      "Metadata",
+      value = "metadata_details",
+      shiny::uiOutput("run_metadata_panel"),
+      shiny::uiOutput("full_metadata_panel")
+    ),
+    bslib::accordion_panel(
+      "Protocol details",
+      value = "protocol_details",
+      shiny::uiOutput("protocol_panel")
+    )
+  )
 )
 
 server <- function(input, output, session) {
@@ -974,9 +988,12 @@ server <- function(input, output, session) {
     metadata <- run_metadata()
 
     if (is.null(records) || nrow(records) == 0L) {
-      return(bslib::card(
+      return(shiny::div(
         class = "run-metadata-card",
-        bslib::card_header("Selected run details"),
+        shiny::div(
+          class = "metadata-section-heading",
+          shiny::h3("Selected run details")
+        ),
         alert_ui("Select at least one measurement run.", "warning")
       ))
     }
@@ -986,10 +1003,11 @@ server <- function(input, output, session) {
       if (is.null(message)) {
         message <- "Connecting to the public run metadata sheet …"
       }
-      return(bslib::card(
+      return(shiny::div(
         class = "run-metadata-card",
-        bslib::card_header(
-          "Selected run details",
+        shiny::div(
+          class = "metadata-section-heading",
+          shiny::h3("Selected run details"),
           metadata_sheet_link_ui("metadata-card-link")
         ),
         alert_ui(message, if (is.null(metadata_error())) "info" else "warning")
@@ -1085,10 +1103,11 @@ server <- function(input, output, session) {
       )))
     }
 
-    bslib::card(
+    shiny::div(
       class = "run-metadata-card",
-      bslib::card_header(
-        shiny::span("Selected run details"),
+      shiny::div(
+        class = "metadata-section-heading",
+        shiny::h3("Selected run details"),
         metadata_sheet_link_ui("metadata-card-link")
       ),
       shiny::p(
@@ -1115,17 +1134,18 @@ server <- function(input, output, session) {
   })
 
   output$full_metadata_panel <- shiny::renderUI({
-    metadata <- run_metadata()
+    metadata <- sort_run_metadata_newest(run_metadata())
 
     if (is.null(metadata)) {
       message <- metadata_error()
       if (is.null(message)) {
         message <- "Connecting to the public run metadata sheet …"
       }
-      return(bslib::card(
+      return(shiny::div(
         class = "full-metadata-card",
-        bslib::card_header(
-          shiny::span("Full run metadata (read-only)"),
+        shiny::div(
+          class = "metadata-section-heading",
+          shiny::h3("All run metadata (read-only)"),
           metadata_sheet_link_ui("metadata-card-link")
         ),
         alert_ui(message, if (is.null(metadata_error())) "info" else "warning")
@@ -1134,10 +1154,11 @@ server <- function(input, output, session) {
 
     metadata_columns <- setdiff(names(metadata), ".run_id")
     if (nrow(metadata) == 0L || length(metadata_columns) == 0L) {
-      return(bslib::card(
+      return(shiny::div(
         class = "full-metadata-card",
-        bslib::card_header(
-          shiny::span("Full run metadata (read-only)"),
+        shiny::div(
+          class = "metadata-section-heading",
+          shiny::h3("All run metadata (read-only)"),
           metadata_sheet_link_ui("metadata-card-link")
         ),
         alert_ui("The public metadata CSV contains no displayable rows.", "warning")
@@ -1152,16 +1173,20 @@ server <- function(input, output, session) {
       }))
     })
 
-    bslib::card(
+    shiny::div(
       class = "full-metadata-card",
-      bslib::card_header(
-        shiny::span("Full run metadata (read-only)"),
+      shiny::div(
+        class = "metadata-section-heading",
+        shiny::h3("All run metadata (read-only)"),
         metadata_sheet_link_ui("metadata-card-link")
       ),
       shiny::p(
         class = "full-metadata-note",
         sprintf(
-          "%d metadata rows loaded from the public CSV. This display cannot be edited.",
+          paste0(
+            "%d metadata rows loaded from the public CSV. ",
+            "Newest run IDs are shown first. This display cannot be edited."
+          ),
           nrow(metadata)
         )
       ),

@@ -38,6 +38,34 @@ test_that("measurement metadata matching is exact apart from case and whitespace
   expect_equal(measurement_run_id("/tmp/run-one.csv"), "run-one")
 })
 
+test_that("full metadata can be sorted newest first by run timestamp", {
+  metadata <- clean_run_metadata(data.frame(
+    timestamp = c(
+      "20260728_0815_B1",
+      "manual-note",
+      "20260730_1410_O2",
+      "20260729_0930_P1",
+      "20260730_0900_B2"
+    ),
+    species = c("beech", "note", "oak", "prunus", "beech"),
+    stringsAsFactors = FALSE
+  ))
+
+  sorted <- sort_run_metadata_newest(metadata)
+
+  expect_equal(
+    sorted$timestamp,
+    c(
+      "20260730_1410_O2",
+      "20260730_0900_B2",
+      "20260729_0930_P1",
+      "20260728_0815_B1",
+      "manual-note"
+    )
+  )
+  expect_equal(rownames(sorted), as.character(seq_len(nrow(sorted))))
+})
+
 test_that("duplicate exact metadata rows are retained and colors are distinct", {
   metadata <- clean_run_metadata(data.frame(
     timestamp = c("run-one", "run-one"),

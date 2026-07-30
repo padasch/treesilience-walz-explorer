@@ -79,16 +79,32 @@ body {
 }
 
 .run-metadata-card {
-  border-color: var(--walz-border);
   margin-bottom: 1rem;
 }
 
-.run-metadata-card > .card-header {
+.detail-accordion {
+  margin-top: 1rem;
+}
+
+.detail-accordion .accordion-button {
+  color: var(--walz-ink);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.metadata-section-heading {
   align-items: center;
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem 1rem;
   justify-content: space-between;
+  margin-bottom: 0.7rem;
+}
+
+.metadata-section-heading h3 {
+  color: var(--walz-ink);
+  font-size: 1rem;
+  margin: 0;
 }
 
 .metadata-card-link {
@@ -106,15 +122,15 @@ body {
 .metadata-match-note {
   color: var(--walz-muted);
   font-size: 0.82rem;
-  margin: 0.85rem 1rem 0.35rem;
+  margin: 0 0 0.7rem;
 }
 
 .run-metadata-card > .walz-alert {
-  margin-inline: 1rem;
+  margin-bottom: 0.7rem;
 }
 
 .run-metadata-scroll {
-  margin: 0.7rem 1rem 1rem;
+  margin: 0.7rem 0 0;
   overflow-x: auto;
 }
 
@@ -182,21 +198,23 @@ body {
 }
 
 .full-metadata-card {
-  margin-top: 1rem;
+  border-top: 1px solid var(--walz-border);
+  margin-top: 1.25rem;
+  padding-top: 1.15rem;
 }
 
 .full-metadata-card > .walz-alert {
-  margin: 1rem;
+  margin-bottom: 0;
 }
 
 .full-metadata-note {
   color: var(--walz-muted);
   font-size: 0.82rem;
-  margin: 0.85rem 1rem 0.35rem;
+  margin: 0 0 0.35rem;
 }
 
 .full-metadata-scroll {
-  margin: 0.7rem 1rem 1rem;
+  margin: 0.7rem 0 0;
   max-height: 32rem;
   overflow: auto;
 }

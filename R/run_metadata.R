@@ -115,6 +115,35 @@ match_run_metadata <- function(metadata, measurement_name) {
   metadata[metadata$.run_id == run_id, , drop = FALSE]
 }
 
+sort_run_metadata_newest <- function(metadata) {
+  if (
+    is.null(metadata) ||
+      !is.data.frame(metadata) ||
+      nrow(metadata) == 0L ||
+      !"timestamp" %in% names(metadata)
+  ) {
+    return(metadata)
+  }
+
+  timestamp_keys <- sub(
+    "^\\s*([0-9]{8})[_-]?([0-9]{4}).*$",
+    "\\1\\2",
+    as.character(metadata$timestamp),
+    perl = TRUE
+  )
+  timestamp_keys <- suppressWarnings(as.numeric(timestamp_keys))
+  sorted_rows <- order(
+    timestamp_keys,
+    decreasing = TRUE,
+    na.last = TRUE,
+    method = "radix"
+  )
+
+  sorted <- metadata[sorted_rows, , drop = FALSE]
+  rownames(sorted) <- NULL
+  sorted
+}
+
 metadata_column_label <- function(column) {
   label <- unname(WALZ_METADATA_COLUMN_LABELS[column])
   if (length(label) == 0L || is.na(label) || !nzchar(label)) {
