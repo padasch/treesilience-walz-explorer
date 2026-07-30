@@ -1,4 +1,4 @@
-test_that("comparison controls, variables, and protocols render without dew tab", {
+test_that("multi-run controls, metadata, plots, and protocols stay synchronized", {
   skip_if_not_installed("shiny")
   skip_if_not_installed("bslib")
 
@@ -10,174 +10,153 @@ test_that("comparison controls, variables, and protocols render without dew tab"
   page_html <- htmltools::renderTags(app_environment$ui)$html
   expect_lt(
     regexpr("source_status", page_html, fixed = TRUE)[[1]],
-    regexpr("measurement_id", page_html, fixed = TRUE)[[1]]
+    regexpr("measurement_ids", page_html, fixed = TRUE)[[1]]
   )
+  expect_match(page_html, "measurement_ids", fixed = TRUE)
+  expect_match(page_html, "multiple", fixed = TRUE)
+  expect_match(page_html, "run_metadata_panel", fixed = TRUE)
+  expect_false(grepl("overlay_enabled", page_html, fixed = TRUE))
+  expect_false(grepl("comparison_id", page_html, fixed = TRUE))
   expect_false(grepl("Dew-Point Calculation", page_html, fixed = TRUE))
-  expect_false(grepl("dew_water_mode", page_html, fixed = TRUE))
-  expect_false(grepl("dew_outlet_h2o_ppm", page_html, fixed = TRUE))
-  expect_false(grepl("dew_inlet_h2o_ppm", page_html, fixed = TRUE))
-  expect_false(grepl("dew_leaf_h2o_added_ppm", page_html, fixed = TRUE))
-  expect_false(grepl("dew_couple_temperatures", page_html, fixed = TRUE))
-  expect_false(grepl("dew_safety_buffer", page_html, fixed = TRUE))
-  expect_false(grepl("dew_point_plan_plot", page_html, fixed = TRUE))
-  expect_false(grepl("dew_point_audit_plot", page_html, fixed = TRUE))
 
   parsed <- dew_point_fixture()
-  modified <- as.POSIXct("2026-07-13 16:27:42", tz = "UTC")
+  modified <- as.POSIXct("2026-07-27 16:27:42", tz = "UTC")
   fake_index <- list(
     measurements = data.frame(
-      id = c("primary-id", "overlay-id"),
-      name = c(
-        "20260713_1023_chamber_oak(area10)_postblackout.csv",
-        "20260713_1023_chamber_prunus_area10_postblackout.csv"
-      ),
-      modified_time = c(modified, modified - 60),
+      id = c("run-one-id", "run-two-id", "run-three-id"),
+      name = c("run-one.csv", "run-two.csv", "run-three.csv"),
+      modified_time = c(modified, modified - 60, modified - 120),
       modified_iso = c(
-        "2026-07-13T16:27:42.000Z",
-        "2026-07-13T16:26:42.000Z"
+        "2026-07-27T16:27:42.000Z",
+        "2026-07-27T16:26:42.000Z",
+        "2026-07-27T16:25:42.000Z"
       ),
-      mime_type = c("text/csv", "text/csv"),
-      size = c(1, 1),
+      mime_type = rep("text/csv", 3),
+      size = rep(1, 3),
       stringsAsFactors = FALSE
     ),
     protocols = data.frame(
-      id = c("oak-protocol-id", "prunus-protocol-id"),
-      name = c(
-        "20260713_1023_chamber_oak(10).txt",
-        "20260713_1023_chamber_prunus_area10.txt"
-      ),
-      modified_time = c(modified, modified),
-      modified_iso = c(
-        "2026-07-13T16:27:42.000Z",
-        "2026-07-13T16:27:42.000Z"
-      ),
-      mime_type = c("text/plain", "text/plain"),
-      size = c(1, 1),
+      id = c("protocol-one", "protocol-two", "protocol-three"),
+      name = c("run-one.txt", "run-two.txt", "run-three.txt"),
+      modified_time = rep(modified, 3),
+      modified_iso = rep("2026-07-27T16:27:42.000Z", 3),
+      mime_type = rep("text/plain", 3),
+      size = rep(1, 3),
       stringsAsFactors = FALSE
     ),
     refreshed_at = modified
   )
+  fake_metadata <- clean_run_metadata(data.frame(
+    timestamp = c("run-one", "run-two"),
+    `TREE species` = c("beech", "oak"),
+    `plant id` = c("B1", "O1"),
+    `WALZ walz number` = c("1", "2"),
+    check.names = FALSE,
+    stringsAsFactors = FALSE
+  ))
 
   app_environment$list_walz_drive <- function(root_id) fake_index
+  app_environment$load_public_run_metadata <- function(sheet_id, sheet_name) {
+    fake_metadata
+  }
   app_environment$load_remote_measurement <- function(record) {
     value <- parsed
-    if (record$id[[1]] == "overlay-id") {
-      value$data$Datetime <- value$data$Datetime + (24 * 60 * 60)
-      value$data$A <- value$data$A + 0.5
-    }
+    offset <- match(record$id[[1]], fake_index$measurements$id) - 1L
+    value$data$Datetime <- value$data$Datetime + (offset * 24 * 60 * 60)
+    value$data$A <- value$data$A + offset
     value
   }
   app_environment$load_remote_protocol <- function(record) "Set CO2 = 440"
 
   shiny::testServer(app_environment$server, {
-    session$flushReact()
     session$setInputs(
-      measurement_id = "primary-id",
-      overlay_enabled = FALSE,
-      show_grid = FALSE,
-      dew_water_mode = "outlet",
-      dew_outlet_h2o_ppm = 15000,
-      dew_inlet_h2o_ppm = 15000,
-      dew_leaf_h2o_added_ppm = 2000,
-      dew_tcuv = 22,
-      dew_tamb = 20,
-      dew_pamb = 100,
-      dew_safety_buffer = 2
-    )
-    session$flushReact()
-
-    expect_match(output$source_status$html, "<dl", fixed = TRUE)
-    expect_match(
-      output$source_status$html,
-      "https://drive.google.com/drive/folders/1wC9zXLEWQe4z7jBxfBfPRiVBuPJiF8vE",
-      fixed = TRUE
-    )
-    expect_match(output$variable_selector$html, "Response parameters", fixed = TRUE)
-    expect_match(output$variable_selector$html, "Environmental parameters", fixed = TRUE)
-    expect_match(output$variable_selector$html, "Physiological constant", fixed = TRUE)
-    expect_match(output$variable_selector$html, "name=\"response_variables\" value=\"GH2O\" checked", fixed = TRUE)
-    expect_match(output$variable_selector$html, "value=\"Tcuv\"", fixed = TRUE)
-    expect_match(output$variable_selector$html, "name=\"environmental_variables\" value=\"Tamb\" checked", fixed = TRUE)
-    expect_match(output$variable_selector$html, "value=\"Tleaf\"", fixed = TRUE)
-    expect_match(output$variable_selector$html, "value=\"Area\"", fixed = TRUE)
-    expect_match(output$dew_point_results$html, "Cuvette cold point clears margin", fixed = TRUE)
-    expect_match(output$dew_point_results$html, "Tubing cold point clears margin", fixed = TRUE)
-    expect_match(output$dew_point_results$html, "Manual context", fixed = TRUE)
-    expect_null(dew_point_plan_widget_result()$error)
-    expect_s3_class(dew_point_plan_widget_result()$value, "plotly")
-    expect_length(
-      plotly::plotly_build(dew_point_plan_widget_result()$value)$x$data,
-      5L
-    )
-    expect_match(
-      output$dew_point_audit_heading$html,
-      "20260713_1023_chamber_oak(area10)_postblackout.csv",
-      fixed = TRUE
-    )
-    expect_match(
-      output$dew_point_audit_heading$html,
-      "actual recorded wa [ppm] and Pamb [kPa]",
-      fixed = TRUE
-    )
-    expect_match(
-      output$dew_point_audit_heading$html,
-      "VPD × Pamb / 1000",
-      fixed = TRUE
-    )
-    expect_null(dew_point_audit_widget_result()$error)
-    expect_s3_class(dew_point_audit_widget_result()$value, "plotly")
-    expect_length(dew_point_audit_widget_result()$value$x$data, 4L)
-    expect_match(output$dew_point_audit_alert$html, "No recorded row reached the dew point", fixed = TRUE)
-    expect_match(output$dew_point_audit_alert$html, "Tcuv was above Tamb", fixed = TRUE)
-
-    variable_html <- output$variable_selector$html
-    expect_lt(
-      regexpr("Response parameters", variable_html, fixed = TRUE)[[1]],
-      regexpr("Environmental parameters", variable_html, fixed = TRUE)[[1]]
-    )
-    expect_lt(
-      regexpr("value=\"A\"", variable_html, fixed = TRUE)[[1]],
-      regexpr("value=\"GH2O\"", variable_html, fixed = TRUE)[[1]]
-    )
-    expect_lt(
-      regexpr("value=\"GH2O\"", variable_html, fixed = TRUE)[[1]],
-      regexpr("value=\"E\"", variable_html, fixed = TRUE)[[1]]
-    )
-    expect_lt(
-      regexpr("Environmental parameters", variable_html, fixed = TRUE)[[1]],
-      regexpr("value=\"Area\"", variable_html, fixed = TRUE)[[1]]
-    )
-
-    session$setInputs(
-      overlay_enabled = TRUE,
-      comparison_id = "overlay-id",
+      measurement_ids = c("run-one-id", "run-two-id"),
       response_variables = c("A", "GH2O"),
-      environmental_variables = c("Tcuv", "PARtop"),
+      environmental_variables = c("Tcuv", "Tamb", "PARtop"),
       constant_variables = character(),
       show_grid = TRUE
     )
     session$flushReact()
 
-    expect_match(output$source_status$html, "Overlay upload modified", fixed = TRUE)
+    expect_match(output$source_status$html, "Source status", fixed = TRUE)
     expect_match(
-      output$selected_file_heading$html,
-      "20260713_1023_chamber_oak(area10)_postblackout.csv",
+      output$source_status$html,
+      "https://docs.google.com/spreadsheets/d/1BlUdEIKP-iEJICpzTF8NQG4nyEVBv_7Vgywc7KQqAX0/edit",
+      fixed = TRUE
+    )
+    expect_match(output$source_status$html, "Metadata rows", fixed = TRUE)
+    expect_match(output$variable_selector$html, "Response parameters", fixed = TRUE)
+    expect_match(output$variable_selector$html, "Environmental parameters", fixed = TRUE)
+    expect_match(output$variable_selector$html, "Physiological constant", fixed = TRUE)
+    expect_match(
+      output$variable_selector$html,
+      "name=\"response_variables\" value=\"GH2O\" checked",
       fixed = TRUE
     )
     expect_match(
-      output$selected_file_heading$html,
-      "20260713_1023_chamber_prunus_area10_postblackout.csv",
+      output$variable_selector$html,
+      "name=\"environmental_variables\" value=\"Tamb\" checked",
       fixed = TRUE
     )
-    expect_match(output$timeseries_alerts$html, "elapsed minute zero", fixed = TRUE)
-    expect_match(output$protocol_panel$html, "Primary measurement protocol", fixed = TRUE)
-    expect_match(output$protocol_panel$html, "Overlay measurement protocol", fixed = TRUE)
-    expect_match(output$protocol_panel$html, "No fuzzy matching was used", fixed = TRUE)
+
+    metadata_html <- output$run_metadata_panel$html
+    expect_match(metadata_html, "run-one.csv", fixed = TRUE)
+    expect_match(metadata_html, "run-two.csv", fixed = TRUE)
+    expect_match(metadata_html, "beech", fixed = TRUE)
+    expect_match(metadata_html, "oak", fixed = TRUE)
+    expect_match(metadata_html, "Exact ID", fixed = TRUE)
+    expect_match(
+      metadata_html,
+      "filename stem = sheet Run ID",
+      fixed = TRUE
+    )
+    expect_gte(
+      lengths(regmatches(
+        metadata_html,
+        gregexpr("background-color:", metadata_html, fixed = TRUE)
+      )),
+      2L
+    )
+
+    expect_match(
+      output$timeseries_alerts$html,
+      "every run starts at elapsed minute zero",
+      fixed = TRUE
+    )
     expect_null(timeseries_widget_result()$error)
     expect_s3_class(timeseries_widget_result()$value, "plotly")
     expect_null(state_widget_result()$error)
     expect_s3_class(state_widget_result()$value, "plotly")
-    expect_length(dew_point_audit_widget_result()$value$x$data, 4L)
+
+    built <- plotly::plotly_build(timeseries_widget_result()$value)
+    axis_names <- grep("^[xy]axis[0-9]*$", names(built$x$layout), value = TRUE)
+    expect_true(length(axis_names) > 0L)
+    expect_true(all(vapply(
+      built$x$layout[axis_names],
+      function(axis) isTRUE(axis$showspikes),
+      logical(1)
+    )))
+
+    expect_match(output$protocol_panel$html, "Run 1 measurement protocol", fixed = TRUE)
+    expect_match(output$protocol_panel$html, "Run 2 measurement protocol", fixed = TRUE)
+    expect_match(output$protocol_panel$html, "No fuzzy matching was used", fixed = TRUE)
+
+    colors <- unname(selected_run_context()$colors)
+    expect_length(colors, 2L)
+    expect_length(unique(colors), 2L)
+
+    session$setInputs(measurement_ids = c("run-one-id", "run-three-id"))
+    session$flushReact()
+    expect_match(
+      output$run_metadata_panel$html,
+      "No exact metadata row was found for: run-three",
+      fixed = TRUE
+    )
+    expect_match(
+      output$run_metadata_panel$html,
+      "No fuzzy or timestamp-only guess was used",
+      fixed = TRUE
+    )
   })
 })
 
@@ -228,14 +207,20 @@ test_that("missing audit columns render inline without disabling the planner", {
     ),
     refreshed_at = modified
   )
+  fake_metadata <- clean_run_metadata(data.frame(
+    timestamp = "measurement-without-dew-columns",
+    stringsAsFactors = FALSE
+  ))
 
   app_environment$list_walz_drive <- function(root_id) fake_index
+  app_environment$load_public_run_metadata <- function(sheet_id, sheet_name) {
+    fake_metadata
+  }
   app_environment$load_remote_measurement <- function(record) parsed
 
   shiny::testServer(app_environment$server, {
     session$setInputs(
-      measurement_id = "primary-id",
-      overlay_enabled = FALSE,
+      measurement_ids = "primary-id",
       dew_water_mode = "outlet",
       dew_outlet_h2o_ppm = 15000,
       dew_inlet_h2o_ppm = 15000,

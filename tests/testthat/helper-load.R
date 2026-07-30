@@ -4,6 +4,7 @@ source(file.path(project_root, "R", "config.R"))
 source(file.path(project_root, "R", "walz_parser.R"))
 source(file.path(project_root, "R", "dew_point.R"))
 source(file.path(project_root, "R", "protocol_match.R"))
+source(file.path(project_root, "R", "run_metadata.R"))
 source(file.path(project_root, "R", "drive_data.R"))
 source(file.path(project_root, "R", "plots.R"))
 

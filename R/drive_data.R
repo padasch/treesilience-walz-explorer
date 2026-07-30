@@ -142,6 +142,23 @@ resolve_selected_measurement <- function(index, selected_id) {
   if (nrow(record) == 1L) record else NULL
 }
 
+resolve_selected_measurements <- function(index, selected_ids) {
+  if (is.null(selected_ids) || length(selected_ids) == 0L) {
+    return(NULL)
+  }
+  records <- lapply(
+    selected_ids,
+    function(selected_id) resolve_selected_measurement(index, selected_id)
+  )
+  records <- Filter(Negate(is.null), records)
+  if (length(records) == 0L) {
+    return(NULL)
+  }
+  result <- do.call(rbind, records)
+  rownames(result) <- NULL
+  result
+}
+
 remote_cache_key <- function(kind, record) {
   paste(kind, record$id[[1]], record$modified_iso[[1]], sep = "::")
 }

@@ -1,4 +1,6 @@
 WALZ_DEFAULT_DRIVE_FOLDER_ID <- "1wC9zXLEWQe4z7jBxfBfPRiVBuPJiF8vE"
+WALZ_DEFAULT_METADATA_SHEET_ID <- "1BlUdEIKP-iEJICpzTF8NQG4nyEVBv_7Vgywc7KQqAX0"
+WALZ_DEFAULT_METADATA_SHEET_NAME <- "Walz Measurement Metadata"
 WALZ_TIMEZONE <- "Europe/Zurich"
 WALZ_ENABLE_DEW_POINT_TAB <- FALSE
 WALZ_RESPONSE_VARIABLES <- c("A", "GH2O", "E")
@@ -31,6 +33,14 @@ walz_config <- function() {
       unset = WALZ_DEFAULT_DRIVE_FOLDER_ID
     ),
     api_key = Sys.getenv("GOOGLE_DRIVE_API_KEY", unset = ""),
+    metadata_sheet_id = Sys.getenv(
+      "WALZ_METADATA_SHEET_ID",
+      unset = WALZ_DEFAULT_METADATA_SHEET_ID
+    ),
+    metadata_sheet_name = Sys.getenv(
+      "WALZ_METADATA_SHEET_NAME",
+      unset = WALZ_DEFAULT_METADATA_SHEET_NAME
+    ),
     enable_dew_point_tab = identical(
       tolower(Sys.getenv(
         "WALZ_ENABLE_DEW_POINT_TAB",

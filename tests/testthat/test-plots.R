@@ -29,12 +29,15 @@ test_that("numeric variables are grouped in physiological order", {
   expect_false("Tleaf" %in% WALZ_PLOT_VARIABLES)
 })
 
-test_that("two runs overlay from elapsed minute zero in both views", {
+test_that("any number of runs overlay from elapsed minute zero with unique colors", {
   skip_if_not_installed("plotly")
   primary <- read_walz_csv(fixture_path("walz_sample.csv"))
   comparison <- primary
+  third <- primary
   comparison$data$Datetime <- comparison$data$Datetime + (24 * 60 * 60)
   comparison$data$A <- comparison$data$A + 0.5
+  third$data$Datetime <- third$data$Datetime + (2 * 24 * 60 * 60)
+  third$data$A <- third$data$A + 1
 
   primary_long <- measurement_long_data(
     primary,
@@ -49,23 +52,37 @@ test_that("two runs overlay from elapsed minute zero in both views", {
 
   expect_equal(min(primary_long$ElapsedMinutes), 0)
   expect_equal(min(comparison_long$ElapsedMinutes), 0)
-  expect_s3_class(
-    make_timeseries_plot(
-      primary,
-      show_grid = TRUE,
-      variables = c("A", "Tcuv", "PARtop"),
-      comparison = comparison,
-      run_labels = c("primary.csv", "overlay.csv")
-    ),
-    "plotly"
+  labels <- c("primary.csv", "comparison.csv", "third.csv")
+  colors <- c("#28754D", "#BD5D38", "#426A8C")
+  timeseries <- make_timeseries_plot(
+    list(primary, comparison, third),
+    show_grid = TRUE,
+    variables = c("A", "Tcuv", "PARtop"),
+    run_labels = labels,
+    run_colors = colors
   )
-  expect_s3_class(
-    make_state_plot(
-      primary,
-      variables = c("A", "Tcuv", "PARtop"),
-      comparison = comparison,
-      run_labels = c("primary.csv", "overlay.csv")
-    ),
-    "plotly"
+  state <- make_state_plot(
+    list(primary, comparison, third),
+    variables = c("A", "Tcuv", "PARtop"),
+    run_labels = labels,
+    run_colors = colors
   )
+
+  expect_s3_class(timeseries, "plotly")
+  expect_s3_class(state, "plotly")
+
+  built <- plotly::plotly_build(timeseries)
+  axis_names <- grep("^[xy]axis[0-9]*$", names(built$x$layout), value = TRUE)
+  expect_true(length(axis_names) > 0L)
+  expect_true(all(vapply(
+    built$x$layout[axis_names],
+    function(axis) isTRUE(axis$showspikes),
+    logical(1)
+  )))
+  expect_true(all(vapply(
+    built$x$layout[axis_names],
+    function(axis) identical(axis$spikemode, "across+toaxis"),
+    logical(1)
+  )))
+  expect_length(unique(run_palette(12)), 12L)
 })

@@ -16,6 +16,7 @@ source("R/config.R", local = TRUE)
 source("R/walz_parser.R", local = TRUE)
 source("R/dew_point.R", local = TRUE)
 source("R/protocol_match.R", local = TRUE)
+source("R/run_metadata.R", local = TRUE)
 source("R/drive_data.R", local = TRUE)
 source("R/plots.R", local = TRUE)
 
@@ -26,6 +27,10 @@ drive_folder_url <- sprintf(
   "https://drive.google.com/drive/folders/%s",
   config$drive_folder_id
 )
+metadata_sheet_web_url <- sprintf(
+  "https://docs.google.com/spreadsheets/d/%s/edit",
+  config$metadata_sheet_id
+)
 
 drive_status_link_ui <- function() {
   shiny::a(
@@ -34,6 +39,16 @@ drive_status_link_ui <- function() {
     target = "_blank",
     rel = "noopener noreferrer",
     class = "drive-link drive-status-link"
+  )
+}
+
+metadata_sheet_link_ui <- function(class = "drive-link") {
+  shiny::a(
+    "Open run metadata sheet",
+    href = metadata_sheet_web_url,
+    target = "_blank",
+    rel = "noopener noreferrer",
+    class = class
   )
 }
 
@@ -52,8 +67,13 @@ alert_ui <- function(message, level = c("warning", "danger", "info")) {
   )
 }
 
-protocol_card_ui <- function(protocol, role, measurement_name) {
+protocol_card_ui <- function(protocol, role, measurement_name, colour = NULL) {
   header <- sprintf("%s measurement protocol", role)
+  card_style <- if (is.null(colour)) {
+    NULL
+  } else {
+    sprintf("border-left: 0.32rem solid %s;", colour)
+  }
   source_line <- shiny::p(
     class = "protocol-measurement-source",
     shiny::strong("Measurement: "),
@@ -63,6 +83,7 @@ protocol_card_ui <- function(protocol, role, measurement_name) {
   if (is.null(protocol$match)) {
     return(bslib::card(
       class = "protocol-card",
+      style = card_style,
       bslib::card_header(header),
       source_line,
       alert_ui("No measurement is currently selected.", "warning")
@@ -72,6 +93,7 @@ protocol_card_ui <- function(protocol, role, measurement_name) {
   if (protocol$match$status != "matched") {
     return(bslib::card(
       class = "protocol-card",
+      style = card_style,
       bslib::card_header(header),
       source_line,
       alert_ui(protocol$match$message, "warning")
@@ -82,6 +104,7 @@ protocol_card_ui <- function(protocol, role, measurement_name) {
   if (!is.null(protocol$error)) {
     return(bslib::card(
       class = "protocol-card",
+      style = card_style,
       bslib::card_header(header),
       source_line,
       shiny::p(class = "protocol-filename", filename),
@@ -97,6 +120,7 @@ protocol_card_ui <- function(protocol, role, measurement_name) {
 
   bslib::card(
     class = "protocol-card",
+    style = card_style,
     bslib::card_header(header),
     source_line,
     shiny::div(
@@ -129,31 +153,22 @@ ui <- bslib::page_sidebar(
     shiny::hr(),
     shiny::p(
       class = "sidebar-intro",
-      "Choose one WALZ run or align and overlay a second run."
+      "Choose one or more WALZ runs. Multiple runs are aligned at elapsed minute zero."
     ),
-    shiny::selectInput(
-      "measurement_id",
-      "Primary measurement run",
+    shiny::selectizeInput(
+      "measurement_ids",
+      "Measurement runs",
       choices = character(),
-      selectize = TRUE
-    ),
-    shiny::checkboxInput(
-      "overlay_enabled",
-      "Overlay a second measurement run",
-      value = FALSE
-    ),
-    shiny::conditionalPanel(
-      condition = "input.overlay_enabled",
-      shiny::selectInput(
-        "comparison_id",
-        "Overlay measurement run",
-        choices = character(),
-        selectize = TRUE
-      ),
-      shiny::p(
-        class = "control-help",
-        "Overlay runs are aligned at elapsed minute zero; original timestamps remain in the hover text."
+      selected = character(),
+      multiple = TRUE,
+      options = list(
+        plugins = list("remove_button"),
+        placeholder = "Select one or more measurement runs"
       )
+    ),
+    shiny::p(
+      class = "control-help",
+      "Add as many runs as needed. Remove a run with the × on its selection chip."
     ),
     shiny::uiOutput("variable_selector"),
     shiny::actionButton(
@@ -172,11 +187,11 @@ ui <- bslib::page_sidebar(
     class = "app-introduction",
     shiny::h2("Explore gas-exchange runs without code"),
     shiny::p(
-      "Zoom, pan, hover over observations, or draw directly on the plots. ",
+      "Zoom, pan, use the cursor crosshair, or draw directly on the plots. ",
       "Selected variables control both the timeseries and A-versus-state views."
     )
   ),
-  shiny::uiOutput("selected_file_heading"),
+  shiny::uiOutput("run_metadata_panel"),
   bslib::navset_card_tab(
     id = "plot_view",
     title = NULL,
@@ -330,85 +345,83 @@ ui <- bslib::page_sidebar(
 server <- function(input, output, session) {
   drive_index <- shiny::reactiveVal(NULL)
   source_error <- shiny::reactiveVal(NULL)
+  run_metadata <- shiny::reactiveVal(NULL)
+  metadata_error <- shiny::reactiveVal(NULL)
 
-  refresh_drive <- function() {
+  refresh_sources <- function() {
     source_error(NULL)
-    result <- tryCatch(
+    metadata_error(NULL)
+
+    drive_result <- tryCatch(
       list_walz_drive(config$drive_folder_id),
       error = function(error) error
     )
 
-    if (inherits(result, "error")) {
-      source_error(conditionMessage(result))
-      return(invisible(FALSE))
+    if (inherits(drive_result, "error")) {
+      source_error(conditionMessage(drive_result))
+    } else {
+      drive_index(drive_result)
+      choices <- stats::setNames(
+        drive_result$measurements$id,
+        drive_result$measurements$name
+      )
+      selected <- if (length(choices) > 0L) {
+        unname(choices[[1]])
+      } else {
+        character()
+      }
+      shiny::updateSelectizeInput(
+        session,
+        "measurement_ids",
+        choices = choices,
+        selected = selected,
+        server = TRUE
+      )
     }
 
-    drive_index(result)
-    choices <- stats::setNames(
-      result$measurements$id,
-      result$measurements$name
+    metadata_result <- tryCatch(
+      load_public_run_metadata(
+        config$metadata_sheet_id,
+        config$metadata_sheet_name
+      ),
+      error = function(error) error
     )
-    selected <- if (length(choices) > 0L) unname(choices[[1]]) else character()
-    shiny::updateSelectInput(
-      session,
-      "measurement_id",
-      choices = choices,
-      selected = selected
-    )
-    invisible(TRUE)
+    if (inherits(metadata_result, "error")) {
+      metadata_error(conditionMessage(metadata_result))
+    } else {
+      run_metadata(metadata_result)
+    }
+
+    invisible(!inherits(drive_result, "error"))
   }
 
-  shiny::observeEvent(TRUE, refresh_drive(), once = TRUE)
-  shiny::observeEvent(input$refresh_latest, refresh_drive(), ignoreInit = TRUE)
+  shiny::observeEvent(TRUE, refresh_sources(), once = TRUE)
+  shiny::observeEvent(input$refresh_latest, refresh_sources(), ignoreInit = TRUE)
 
-  shiny::observe({
-    index <- drive_index()
-    if (is.null(index)) {
-      return()
-    }
-
-    primary_id <- input$measurement_id
-    candidates <- index$measurements
-    if (!is.null(primary_id) && nzchar(primary_id)) {
-      candidates <- candidates[candidates$id != primary_id, , drop = FALSE]
-    }
-    choices <- stats::setNames(candidates$id, candidates$name)
-    current <- shiny::isolate(input$comparison_id)
-    selected <- if (!is.null(current) && current %in% unname(choices)) {
-      current
-    } else if (length(choices) > 0L) {
-      unname(choices[[1]])
-    } else {
-      character()
-    }
-    shiny::updateSelectInput(
-      session,
-      "comparison_id",
-      choices = choices,
-      selected = selected
-    )
+  selected_records <- shiny::reactive({
+    resolve_selected_measurements(drive_index(), input$measurement_ids)
   })
 
-  overlay_active <- shiny::reactive(isTRUE(input$overlay_enabled))
+  selected_run_context <- shiny::reactive({
+    records <- selected_records()
+    if (is.null(records) || nrow(records) == 0L) {
+      return(list(
+        records = NULL,
+        labels = character(),
+        colors = character()
+      ))
+    }
+    labels <- make.unique(records$name)
+    colors <- stats::setNames(run_palette(nrow(records)), labels)
+    list(records = records, labels = labels, colors = colors)
+  })
 
   selected_record <- shiny::reactive({
-    resolve_selected_measurement(drive_index(), input$measurement_id)
-  })
-
-  selected_comparison_record <- shiny::reactive({
-    if (!overlay_active()) {
+    records <- selected_records()
+    if (is.null(records) || nrow(records) == 0L) {
       return(NULL)
     }
-    record <- resolve_selected_measurement(drive_index(), input$comparison_id)
-    primary <- selected_record()
-    if (
-      !is.null(record) &&
-        !is.null(primary) &&
-        identical(record$id[[1]], primary$id[[1]])
-    ) {
-      return(NULL)
-    }
-    record
+    records[1, , drop = FALSE]
   })
 
   load_measurement_result <- function(record, missing_message) {
@@ -421,21 +434,45 @@ server <- function(input, output, session) {
     )
   }
 
-  measurement_result <- shiny::reactive({
-    load_measurement_result(
-      selected_record(),
-      "No primary measurement is currently selected."
+  measurement_results <- shiny::reactive({
+    context <- selected_run_context()
+    records <- context$records
+    if (is.null(records) || nrow(records) == 0L) {
+      return(list())
+    }
+
+    lapply(seq_len(nrow(records)), function(index) {
+      result <- load_measurement_result(
+        records[index, , drop = FALSE],
+        "The selected measurement run is no longer available."
+      )
+      c(
+        list(
+          record = records[index, , drop = FALSE],
+          label = context$labels[[index]],
+          colour = unname(context$colors[[index]])
+        ),
+        result
+      )
+    })
+  })
+
+  valid_measurement_entries <- shiny::reactive({
+    Filter(
+      function(entry) is.null(entry$error) && !is.null(entry$value),
+      measurement_results()
     )
   })
 
-  comparison_measurement_result <- shiny::reactive({
-    if (!overlay_active()) {
-      return(list(value = NULL, error = NULL))
+  measurement_result <- shiny::reactive({
+    results <- measurement_results()
+    if (length(results) == 0L) {
+      return(list(
+        value = NULL,
+        error = "No primary measurement is currently selected."
+      ))
     }
-    load_measurement_result(
-      selected_comparison_record(),
-      "Select a different measurement run to use as the overlay."
-    )
+    list(value = results[[1]]$value, error = results[[1]]$error)
   })
 
   shiny::observeEvent(input$load_dew_from_run, {
@@ -476,16 +513,11 @@ server <- function(input, output, session) {
   }, ignoreInit = TRUE)
 
   available_variable_choices <- shiny::reactive({
-    primary <- measurement_result()
-    if (!is.null(primary$error) || is.null(primary$value)) {
+    entries <- valid_measurement_entries()
+    if (length(entries) == 0L) {
       return(character())
     }
-    parsed_runs <- list(primary$value)
-    comparison <- comparison_measurement_result()
-    if (overlay_active() && is.null(comparison$error) && !is.null(comparison$value)) {
-      parsed_runs <- c(parsed_runs, list(comparison$value))
-    }
-    plot_variable_choices(parsed_runs)
+    plot_variable_choices(lapply(entries, `[[`, "value"))
   })
 
   output$variable_selector <- shiny::renderUI({
@@ -549,34 +581,20 @@ server <- function(input, output, session) {
     ))
   })
 
-  active_run_labels <- shiny::reactive({
-    primary <- selected_record()
-    labels <- if (is.null(primary)) character() else primary$name[[1]]
-    comparison <- selected_comparison_record()
-    if (overlay_active() && !is.null(comparison)) {
-      labels <- c(labels, comparison$name[[1]])
-    }
-    labels
-  })
-
   timeseries_widget_result <- shiny::reactive({
-    primary <- measurement_result()
-    comparison <- comparison_measurement_result()
-    if (!is.null(primary$error) || is.null(primary$value)) {
-      return(list(value = NULL, error = NULL))
-    }
-    if (overlay_active() && (!is.null(comparison$error) || is.null(comparison$value))) {
+    entries <- valid_measurement_entries()
+    if (length(entries) == 0L) {
       return(list(value = NULL, error = NULL))
     }
 
     tryCatch(
       list(
         value = make_timeseries_plot(
-          parsed = primary$value,
+          parsed_runs = lapply(entries, `[[`, "value"),
           show_grid = isTRUE(input$show_grid),
           variables = selected_variables(),
-          comparison = if (overlay_active()) comparison$value else NULL,
-          run_labels = active_run_labels()
+          run_labels = vapply(entries, `[[`, character(1), "label"),
+          run_colors = vapply(entries, `[[`, character(1), "colour")
         ),
         error = NULL
       ),
@@ -585,22 +603,18 @@ server <- function(input, output, session) {
   })
 
   state_widget_result <- shiny::reactive({
-    primary <- measurement_result()
-    comparison <- comparison_measurement_result()
-    if (!is.null(primary$error) || is.null(primary$value)) {
-      return(list(value = NULL, error = NULL))
-    }
-    if (overlay_active() && (!is.null(comparison$error) || is.null(comparison$value))) {
+    entries <- valid_measurement_entries()
+    if (length(entries) == 0L) {
       return(list(value = NULL, error = NULL))
     }
 
     tryCatch(
       list(
         value = make_state_plot(
-          parsed = primary$value,
+          parsed_runs = lapply(entries, `[[`, "value"),
           variables = selected_variables(),
-          comparison = if (overlay_active()) comparison$value else NULL,
-          run_labels = active_run_labels()
+          run_labels = vapply(entries, `[[`, character(1), "label"),
+          run_colors = vapply(entries, `[[`, character(1), "colour")
         ),
         error = NULL
       ),
@@ -879,96 +893,200 @@ server <- function(input, output, session) {
 
   protocol_results <- shiny::reactive({
     index <- drive_index()
-    primary <- selected_record()
-    entries <- list(list(
-      role = "Primary",
-      record = primary,
-      protocol = load_protocol_result(primary, index)
-    ))
-
-    comparison <- selected_comparison_record()
-    if (overlay_active()) {
-      entries <- c(entries, list(list(
-        role = "Overlay",
-        record = comparison,
-        protocol = load_protocol_result(comparison, index)
-      )))
+    context <- selected_run_context()
+    records <- context$records
+    if (is.null(records) || nrow(records) == 0L) {
+      return(list())
     }
-    entries
+
+    lapply(seq_len(nrow(records)), function(run_index) {
+      record <- records[run_index, , drop = FALSE]
+      list(
+        role = sprintf("Run %d", run_index),
+        record = record,
+        colour = unname(context$colors[[run_index]]),
+        protocol = load_protocol_result(record, index)
+      )
+    })
   })
 
   output$source_status <- shiny::renderUI({
-    if (!is.null(source_error())) {
-      return(shiny::tagList(
-        shiny::h5("Drive status"),
-        drive_status_link_ui(),
-        alert_ui(source_error(), "danger")
-      ))
-    }
-
     index <- drive_index()
-    if (is.null(index)) {
-      return(shiny::tagList(
-        shiny::h5("Drive status"),
-        drive_status_link_ui(),
-        shiny::p(class = "muted-status", "Connecting to the public folder …")
-      ))
-    }
-
-    primary <- selected_record()
-    comparison <- selected_comparison_record()
-    format_modified <- function(record) {
-      if (is.null(record)) {
-        return("No run selected")
-      }
-      format(
-        record$modified_time[[1]],
-        "%Y-%m-%d %H:%M %Z",
-        tz = WALZ_TIMEZONE
-      )
-    }
+    metadata <- run_metadata()
+    selected <- selected_records()
 
     shiny::tagList(
-      shiny::h5("Drive status"),
+      shiny::h5("Source status"),
       drive_status_link_ui(),
+      shiny::br(),
+      metadata_sheet_link_ui("drive-link drive-status-link"),
+      if (!is.null(source_error())) alert_ui(source_error(), "danger"),
+      if (!is.null(metadata_error())) alert_ui(metadata_error(), "warning"),
+      if (is.null(index) && is.null(source_error())) {
+        shiny::p(class = "muted-status", "Connecting to the public folder …")
+      },
       shiny::tags$dl(
         class = "source-details",
         shiny::tags$dt("Runs found"),
-        shiny::tags$dd(nrow(index$measurements)),
+        shiny::tags$dd(if (is.null(index)) "—" else nrow(index$measurements)),
         shiny::tags$dt("Protocols found"),
-        shiny::tags$dd(nrow(index$protocols)),
-        shiny::tags$dt("List refreshed"),
-        shiny::tags$dd(format(index$refreshed_at, "%Y-%m-%d %H:%M:%S %Z")),
-        shiny::tags$dt("Primary upload modified"),
-        shiny::tags$dd(format_modified(primary)),
-        if (overlay_active()) shiny::tags$dt("Overlay upload modified"),
-        if (overlay_active()) shiny::tags$dd(format_modified(comparison))
+        shiny::tags$dd(if (is.null(index)) "—" else nrow(index$protocols)),
+        shiny::tags$dt("Metadata rows"),
+        shiny::tags$dd(if (is.null(metadata)) "—" else nrow(metadata)),
+        shiny::tags$dt("Selected runs"),
+        shiny::tags$dd(if (is.null(selected)) 0L else nrow(selected)),
+        shiny::tags$dt("Sources refreshed"),
+        shiny::tags$dd(if (is.null(index)) {
+          "—"
+        } else {
+          format(index$refreshed_at, "%Y-%m-%d %H:%M:%S %Z")
+        })
       )
     )
   })
 
-  output$selected_file_heading <- shiny::renderUI({
-    primary <- selected_record()
-    if (is.null(primary)) {
-      return(shiny::div(
-        class = "selected-file-banner selected-file-banner-empty",
-        shiny::span(class = "selected-file-label", "Measurement file"),
-        shiny::h3("No measurement selected")
+  output$run_metadata_panel <- shiny::renderUI({
+    context <- selected_run_context()
+    records <- context$records
+    metadata <- run_metadata()
+
+    if (is.null(records) || nrow(records) == 0L) {
+      return(bslib::card(
+        class = "run-metadata-card",
+        bslib::card_header("Selected run details"),
+        alert_ui("Select at least one measurement run.", "warning")
       ))
     }
 
-    comparison <- selected_comparison_record()
-    shiny::div(
-      class = "selected-file-banner",
-      shiny::div(
-        class = "selected-file-entry",
-        shiny::span(class = "selected-file-label", "Primary measurement file"),
-        shiny::h3(primary$name[[1]])
+    if (is.null(metadata)) {
+      message <- metadata_error()
+      if (is.null(message)) {
+        message <- "Connecting to the public run metadata sheet …"
+      }
+      return(bslib::card(
+        class = "run-metadata-card",
+        bslib::card_header(
+          "Selected run details",
+          metadata_sheet_link_ui("metadata-card-link")
+        ),
+        alert_ui(message, if (is.null(metadata_error())) "info" else "warning")
+      ))
+    }
+
+    metadata_columns <- setdiff(names(metadata), ".run_id")
+    table_rows <- list()
+    unmatched <- character()
+    duplicate_matches <- character()
+
+    for (run_index in seq_len(nrow(records))) {
+      record <- records[run_index, , drop = FALSE]
+      matches <- match_run_metadata(metadata, record$name[[1]])
+      colour <- unname(context$colors[[run_index]])
+      if (nrow(matches) == 0L) {
+        unmatched <- c(unmatched, measurement_run_id(record$name[[1]]))
+        matches <- as.data.frame(
+          stats::setNames(
+            as.list(rep("", length(metadata_columns))),
+            metadata_columns
+          ),
+          stringsAsFactors = FALSE,
+          check.names = FALSE
+        )
+        matches$timestamp <- measurement_run_id(record$name[[1]])
+        match_label <- "No exact sheet row"
+      } else {
+        if (nrow(matches) > 1L) {
+          duplicate_matches <- c(
+            duplicate_matches,
+            measurement_run_id(record$name[[1]])
+          )
+        }
+        match_label <- if (nrow(matches) == 1L) {
+          "Exact ID"
+        } else {
+          sprintf("%d exact rows", nrow(matches))
+        }
+      }
+
+      for (match_index in seq_len(nrow(matches))) {
+        cells <- lapply(metadata_columns, function(column) {
+          value <- matches[[column]][[match_index]]
+          if (is.na(value) || !nzchar(value)) value <- "—"
+          shiny::tags$td(value)
+        })
+        table_rows <- c(table_rows, list(shiny::tags$tr(
+          class = if (match_label == "No exact sheet row") {
+            "run-metadata-row run-metadata-row-unmatched"
+          } else {
+            "run-metadata-row"
+          },
+          style = sprintf(
+            "border-left: 0.42rem solid %s; background-color: %s;",
+            colour,
+            hex_to_rgba(colour, 0.1)
+          ),
+          shiny::tags$td(
+            class = "run-colour-cell",
+            shiny::span(
+              class = "run-colour-swatch",
+              style = sprintf("background-color: %s;", colour),
+              title = colour
+            )
+          ),
+          shiny::tags$td(class = "measurement-filename-cell", record$name[[1]]),
+          shiny::tags$td(class = "metadata-match-cell", match_label),
+          cells
+        )))
+      }
+    }
+
+    alerts <- list()
+    if (length(unmatched) > 0L) {
+      alerts <- c(alerts, list(alert_ui(
+        paste0(
+          "No exact metadata row was found for: ",
+          paste(unique(unmatched), collapse = ", "),
+          ". No fuzzy or timestamp-only guess was used."
+        ),
+        "warning"
+      )))
+    }
+    if (length(duplicate_matches) > 0L) {
+      alerts <- c(alerts, list(alert_ui(
+        paste0(
+          "Multiple exact metadata rows were found for: ",
+          paste(unique(duplicate_matches), collapse = ", "),
+          ". All exact rows are shown."
+        ),
+        "warning"
+      )))
+    }
+
+    bslib::card(
+      class = "run-metadata-card",
+      bslib::card_header(
+        shiny::span("Selected run details"),
+        metadata_sheet_link_ui("metadata-card-link")
       ),
-      if (overlay_active()) shiny::div(
-        class = "selected-file-entry selected-file-overlay",
-        shiny::span(class = "selected-file-label", "Overlay measurement file"),
-        shiny::h3(if (is.null(comparison)) "No overlay selected" else comparison$name[[1]])
+      shiny::p(
+        class = "metadata-match-note",
+        "Rows are joined by exact measurement filename stem = sheet Run ID. Row colour matches the plotted run."
+      ),
+      if (length(alerts) > 0L) shiny::tagList(alerts),
+      shiny::div(
+        class = "run-metadata-scroll",
+        shiny::tags$table(
+          class = "run-metadata-table",
+          shiny::tags$thead(shiny::tags$tr(
+            shiny::tags$th("Plot"),
+            shiny::tags$th("Measurement file"),
+            shiny::tags$th("Metadata match"),
+            lapply(metadata_columns, function(column) {
+              shiny::tags$th(metadata_column_label(column))
+            })
+          )),
+          shiny::tags$tbody(table_rows)
+        )
       )
     )
   })
@@ -979,29 +1097,24 @@ server <- function(input, output, session) {
       alerts <- c(alerts, list(alert_ui(source_error(), "danger")))
     }
 
-    primary <- measurement_result()
-    comparison <- comparison_measurement_result()
-    if (!is.null(primary$error)) {
-      alerts <- c(alerts, list(alert_ui(primary$error, "danger")))
-    } else if (length(primary$value$issues) > 0L) {
-      alerts <- c(alerts, lapply(primary$value$issues, alert_ui, level = "warning"))
+    results <- measurement_results()
+    for (entry in results) {
+      if (!is.null(entry$error)) {
+        alerts <- c(alerts, list(alert_ui(
+          paste(entry$label, entry$error, sep = ": "),
+          "danger"
+        )))
+      } else if (length(entry$value$issues) > 0L) {
+        alerts <- c(alerts, lapply(
+          entry$value$issues,
+          function(issue) alert_ui(paste(entry$label, issue, sep = ": "), "warning")
+        ))
+      }
     }
-    if (overlay_active() && !is.null(comparison$error)) {
-      alerts <- c(alerts, list(alert_ui(comparison$error, "danger")))
-    } else if (
-      overlay_active() &&
-        !is.null(comparison$value) &&
-        length(comparison$value$issues) > 0L
-    ) {
-      alerts <- c(
-        alerts,
-        lapply(comparison$value$issues, alert_ui, level = "warning")
-      )
-    }
-    if (overlay_active() && is.null(comparison$error)) {
+    if (length(valid_measurement_entries()) > 1L) {
       alerts <- c(alerts, list(alert_ui(
         paste0(
-          "Overlay alignment: both runs start at elapsed minute zero. ",
+          "Multi-run alignment: every run starts at elapsed minute zero. ",
           "Hover over a point to see its original timestamp."
         ),
         "info"
@@ -1025,19 +1138,26 @@ server <- function(input, output, session) {
   })
 
   output$state_alerts <- shiny::renderUI({
-    primary <- measurement_result()
-    comparison <- comparison_measurement_result()
     if (!is.null(source_error())) {
       return(alert_ui(source_error(), "danger"))
     }
-    if (!is.null(primary$error)) {
-      return(alert_ui(primary$error, "danger"))
+    entries <- valid_measurement_entries()
+    if (length(entries) == 0L) {
+      return(alert_ui("No selected run is available for plotting.", "warning"))
     }
-    if (overlay_active() && !is.null(comparison$error)) {
-      return(alert_ui(comparison$error, "danger"))
-    }
-    if (!"A" %in% names(primary$value$data)) {
-      return(alert_ui("The primary run does not contain A, so this view is unavailable.", "warning"))
+    missing_a <- vapply(
+      entries,
+      function(entry) !"A" %in% names(entry$value$data),
+      logical(1)
+    )
+    if (any(missing_a)) {
+      return(alert_ui(
+        paste0(
+          "The A vs state view requires A in every selected run. Missing in: ",
+          paste(vapply(entries[missing_a], `[[`, character(1), "label"), collapse = ", ")
+        ),
+        "warning"
+      ))
     }
     if (length(setdiff(selected_variables(), "A")) == 0L) {
       return(alert_ui("Select at least one state variable for the A vs state view.", "warning"))
@@ -1073,16 +1193,15 @@ server <- function(input, output, session) {
 
   output$protocol_panel <- shiny::renderUI({
     entries <- protocol_results()
+    if (length(entries) == 0L) {
+      return(alert_ui("Select at least one measurement run.", "warning"))
+    }
     shiny::tagList(lapply(entries, function(entry) {
-      measurement_name <- if (is.null(entry$record)) {
-        "No measurement selected"
-      } else {
-        entry$record$name[[1]]
-      }
       protocol_card_ui(
         entry$protocol,
         entry$role,
-        measurement_name
+        entry$record$name[[1]],
+        entry$colour
       )
     }))
   })

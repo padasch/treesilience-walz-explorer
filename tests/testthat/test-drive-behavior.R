@@ -86,4 +86,9 @@ test_that("empty folders and deleted selections resolve safely", {
   expect_null(resolve_selected_measurement(populated_index, "deleted-id"))
   expect_null(resolve_selected_measurement(populated_index, NULL))
   expect_equal(resolve_selected_measurement(populated_index, "two")$name, "two.csv")
+  selected <- resolve_selected_measurements(
+    populated_index,
+    c("two", "deleted-id", "one")
+  )
+  expect_equal(selected$id, c("two", "one"))
 })
