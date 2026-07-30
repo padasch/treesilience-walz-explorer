@@ -346,7 +346,8 @@ ui <- bslib::page_sidebar(
         )
       )
     }
-  )
+  ),
+  shiny::uiOutput("full_metadata_panel")
 )
 
 server <- function(input, output, session) {
@@ -1105,6 +1106,75 @@ server <- function(input, output, session) {
             shiny::tags$th("Metadata match"),
             lapply(metadata_columns, function(column) {
               shiny::tags$th(metadata_column_label(column))
+            })
+          )),
+          shiny::tags$tbody(table_rows)
+        )
+      )
+    )
+  })
+
+  output$full_metadata_panel <- shiny::renderUI({
+    metadata <- run_metadata()
+
+    if (is.null(metadata)) {
+      message <- metadata_error()
+      if (is.null(message)) {
+        message <- "Connecting to the public run metadata sheet …"
+      }
+      return(bslib::card(
+        class = "full-metadata-card",
+        bslib::card_header(
+          shiny::span("Full run metadata (read-only)"),
+          metadata_sheet_link_ui("metadata-card-link")
+        ),
+        alert_ui(message, if (is.null(metadata_error())) "info" else "warning")
+      ))
+    }
+
+    metadata_columns <- setdiff(names(metadata), ".run_id")
+    if (nrow(metadata) == 0L || length(metadata_columns) == 0L) {
+      return(bslib::card(
+        class = "full-metadata-card",
+        bslib::card_header(
+          shiny::span("Full run metadata (read-only)"),
+          metadata_sheet_link_ui("metadata-card-link")
+        ),
+        alert_ui("The public metadata CSV contains no displayable rows.", "warning")
+      ))
+    }
+
+    table_rows <- lapply(seq_len(nrow(metadata)), function(row_index) {
+      shiny::tags$tr(lapply(metadata_columns, function(column) {
+        value <- metadata[[column]][[row_index]]
+        if (is.na(value) || !nzchar(value)) value <- "—"
+        shiny::tags$td(value)
+      }))
+    })
+
+    bslib::card(
+      class = "full-metadata-card",
+      bslib::card_header(
+        shiny::span("Full run metadata (read-only)"),
+        metadata_sheet_link_ui("metadata-card-link")
+      ),
+      shiny::p(
+        class = "full-metadata-note",
+        sprintf(
+          "%d metadata rows loaded from the public CSV. This display cannot be edited.",
+          nrow(metadata)
+        )
+      ),
+      shiny::div(
+        class = "full-metadata-scroll",
+        shiny::tags$table(
+          class = "run-metadata-table full-metadata-table",
+          shiny::tags$thead(shiny::tags$tr(
+            lapply(metadata_columns, function(column) {
+              shiny::tags$th(
+                scope = "col",
+                metadata_column_label(column)
+              )
             })
           )),
           shiny::tags$tbody(table_rows)

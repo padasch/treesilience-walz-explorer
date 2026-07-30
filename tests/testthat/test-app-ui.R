@@ -23,6 +23,11 @@ test_that("multi-run controls, metadata, plots, and protocols stay synchronized"
   expect_match(page_html, "time_axis_mode", fixed = TRUE)
   expect_match(page_html, "value=\"elapsed\" checked", fixed = TRUE)
   expect_match(page_html, "run_metadata_panel", fixed = TRUE)
+  expect_match(page_html, "full_metadata_panel", fixed = TRUE)
+  expect_gt(
+    regexpr("full_metadata_panel", page_html, fixed = TRUE)[[1]],
+    regexpr("plot_view", page_html, fixed = TRUE)[[1]]
+  )
   expect_false(grepl("overlay_enabled", page_html, fixed = TRUE))
   expect_false(grepl("comparison_id", page_html, fixed = TRUE))
   expect_false(grepl("show_grid", page_html, fixed = TRUE))
@@ -120,6 +125,23 @@ test_that("multi-run controls, metadata, plots, and protocols stay synchronized"
       fixed = TRUE
     )
     expect_match(output$source_status$html, "Metadata rows", fixed = TRUE)
+    full_metadata_html <- output$full_metadata_panel$html
+    expect_match(
+      full_metadata_html,
+      "Full run metadata (read-only)",
+      fixed = TRUE
+    )
+    expect_match(
+      full_metadata_html,
+      "2 metadata rows loaded from the public CSV",
+      fixed = TRUE
+    )
+    expect_match(full_metadata_html, "<table", fixed = TRUE)
+    expect_match(full_metadata_html, "beech", fixed = TRUE)
+    expect_match(full_metadata_html, "oak", fixed = TRUE)
+    expect_false(grepl("<input", full_metadata_html, fixed = TRUE))
+    expect_false(grepl("<textarea", full_metadata_html, fixed = TRUE))
+    expect_false(grepl("contenteditable", full_metadata_html, fixed = TRUE))
     expect_match(output$variable_selector$html, "Response parameters", fixed = TRUE)
     expect_match(output$variable_selector$html, "Environmental parameters", fixed = TRUE)
     expect_match(output$variable_selector$html, "Physiological constant", fixed = TRUE)

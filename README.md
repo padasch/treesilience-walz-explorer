@@ -14,6 +14,7 @@ No WALZ measurements, Google credentials, or thesis files are stored in this rep
 - A timeseries x-axis toggle between elapsed time (the default, aligned from minute zero) and the original local time in Europe/Zurich
 - An arbitrary number of selected runs overlaid as solid lines, with one colour and one legend entry per measurement file and original timestamps retained in hover text
 - A live metadata table above the plots, joined by exact measurement filename stem to the sheet `timestamp` run ID; each row is tinted with its plot color
+- A read-only display of the complete public metadata CSV at the bottom of the main page
 - A second interactive **A vs state** view controlled by the same variable checkboxes
 - Plotly zoom, pan, cursor crosshairs, compact exact-value hover, line drawing, freehand drawing, and erasing
 - The raw matched protocol TXT file for each displayed run, shown as escaped text

@@ -181,6 +181,30 @@ body {
   min-width: 7.5rem;
 }
 
+.full-metadata-card {
+  margin-top: 1rem;
+}
+
+.full-metadata-card > .walz-alert {
+  margin: 1rem;
+}
+
+.full-metadata-note {
+  color: var(--walz-muted);
+  font-size: 0.82rem;
+  margin: 0.85rem 1rem 0.35rem;
+}
+
+.full-metadata-scroll {
+  margin: 0.7rem 1rem 1rem;
+  max-height: 32rem;
+  overflow: auto;
+}
+
+.full-metadata-table {
+  min-width: 78rem;
+}
+
 .variable-selector {
   border-bottom: 1px solid var(--walz-border);
   border-top: 1px solid var(--walz-border);
