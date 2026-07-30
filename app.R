@@ -161,7 +161,8 @@ ui <- bslib::page_sidebar(
       multiple = TRUE,
       options = list(
         plugins = list("remove_button"),
-        closeAfterSelect = TRUE,
+        closeAfterSelect = FALSE,
+        hideSelected = TRUE,
         placeholder = "Select one or more measurement runs"
       )
     ),

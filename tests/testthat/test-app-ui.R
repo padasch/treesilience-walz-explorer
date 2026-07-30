@@ -18,6 +18,8 @@ test_that("multi-run controls, metadata, plots, and protocols stay synchronized"
   )
   expect_match(page_html, "measurement_ids", fixed = TRUE)
   expect_match(page_html, "multiple", fixed = TRUE)
+  expect_match(page_html, "\"closeAfterSelect\":false", fixed = TRUE)
+  expect_match(page_html, "\"hideSelected\":true", fixed = TRUE)
   expect_match(page_html, "time_axis_mode", fixed = TRUE)
   expect_match(page_html, "value=\"elapsed\" checked", fixed = TRUE)
   expect_match(page_html, "run_metadata_panel", fixed = TRUE)
