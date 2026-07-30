@@ -69,12 +69,37 @@ test_that("multi-run controls, metadata, plots, and protocols stay synchronized"
   app_environment$load_remote_protocol <- function(record) "Set CO2 = 440"
 
   shiny::testServer(app_environment$server, {
+    session$setInputs(measurement_ids = c("run-one-id", "run-two-id"))
+    session$flushReact()
+    expect_true(all(
+      c("A", "GH2O", "White x T") %in% selected_variables()
+    ))
+
     session$setInputs(
       measurement_ids = c("run-one-id", "run-two-id"),
       response_variables = c("A", "GH2O"),
       environmental_variables = c("Tcuv", "Tamb", "PARtop"),
       constant_variables = character(),
       show_grid = TRUE
+    )
+    session$flushReact()
+    expect_setequal(
+      selected_variables(),
+      c("A", "GH2O", "Tcuv", "Tamb", "PARtop")
+    )
+
+    session$setInputs(
+      response_variables = "E",
+      environmental_variables = "Tcuv",
+      constant_variables = character()
+    )
+    session$flushReact()
+    expect_setequal(selected_variables(), c("E", "Tcuv"))
+
+    session$setInputs(
+      response_variables = c("A", "GH2O"),
+      environmental_variables = c("Tcuv", "Tamb", "PARtop"),
+      constant_variables = character()
     )
     session$flushReact()
 

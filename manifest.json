@@ -2309,7 +2309,7 @@
   },
   "files": {
     "app.R": {
-      "checksum": "213d26ea67768ef366918ffa2a1e5d4b"
+      "checksum": "4c7ca6257ea28b7753b90f5d3c1e709c"
     },
     "docs/dew-point-condensation-notes.md": {
       "checksum": "c9ffd7a03ae2ade5b2bfe060c92998f9"
@@ -2336,7 +2336,7 @@
       "checksum": "bd9e862c17cb85a91929b91396ecefb5"
     },
     "www/styles.css": {
-      "checksum": "72285587c3490fdabd0e01bd1349bb5d"
+      "checksum": "7f845b3c352a68742c5ffb45b7ac0184"
     }
   },
   "users": null

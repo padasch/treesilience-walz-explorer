@@ -163,6 +163,7 @@ ui <- bslib::page_sidebar(
       multiple = TRUE,
       options = list(
         plugins = list("remove_button"),
+        closeAfterSelect = TRUE,
         placeholder = "Select one or more measurement runs"
       )
     ),
@@ -520,6 +521,15 @@ server <- function(input, output, session) {
     plot_variable_choices(lapply(entries, `[[`, "value"))
   })
 
+  selected_group_values <- function(input_value, group_choices) {
+    available_values <- unname(group_choices)
+    if (is.null(input_value)) {
+      return(intersect(WALZ_PLOT_VARIABLES, available_values))
+    }
+
+    intersect(input_value, available_values)
+  }
+
   output$variable_selector <- shiny::renderUI({
     choices <- available_variable_choices()
     if (length(choices) == 0L) {
@@ -533,12 +543,7 @@ server <- function(input, output, session) {
       }
 
       current <- shiny::isolate(input[[input_id]])
-      available_values <- unname(group_choices)
-      selected <- if (is.null(current)) {
-        intersect(WALZ_PLOT_VARIABLES, available_values)
-      } else {
-        intersect(current, available_values)
-      }
+      selected <- selected_group_values(current, group_choices)
 
       shiny::checkboxGroupInput(
         input_id,
@@ -574,10 +579,17 @@ server <- function(input, output, session) {
   })
 
   selected_variables <- shiny::reactive({
+    groups <- group_plot_variable_choices(available_variable_choices())
     unique(c(
-      input$response_variables,
-      input$environmental_variables,
-      input$constant_variables
+      selected_group_values(input$response_variables, groups$response),
+      selected_group_values(
+        input$environmental_variables,
+        groups$environmental
+      ),
+      selected_group_values(
+        input$constant_variables,
+        groups$physiological_constant
+      )
     ))
   })
 
