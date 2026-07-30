@@ -140,13 +140,6 @@ run_palette <- function(count) {
   c(base, extras[seq_len(count - length(base))])
 }
 
-run_line_types <- function(count) {
-  if (count <= 0L) {
-    return(character())
-  }
-  rep(c("solid", "dashed", "dotdash", "longdash", "twodash"), length.out = count)
-}
-
 hex_to_rgba <- function(colour, alpha = 0.1) {
   rgb <- grDevices::col2rgb(colour)
   sprintf(

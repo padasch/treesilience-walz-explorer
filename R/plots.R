@@ -305,7 +305,6 @@ make_timeseries_plot <- function(
     rep_len(unname(run_colors), length(parsed_runs)),
     run_labels
   )
-  line_types <- stats::setNames(run_line_types(length(parsed_runs)), run_labels)
 
   pieces <- Map(
     measurement_long_data,
@@ -336,25 +335,15 @@ make_timeseries_plot <- function(
         y = value,
         text = hover,
         colour = Run,
-        linetype = Run,
-        group = interaction(variable, Run)
+        group = Run
       )
     ) +
       ggplot2::geom_line(linewidth = 0.65, na.rm = TRUE) +
-      ggplot2::geom_point(
-        ggplot2::aes(shape = Run),
-        size = 0.7,
-        alpha = 0.68,
-        na.rm = TRUE
-      ) +
       ggplot2::scale_colour_manual(values = run_colors, drop = FALSE) +
-      ggplot2::scale_linetype_manual(values = line_types, drop = FALSE) +
       ggplot2::labs(
         x = NULL,
         y = NULL,
-        colour = "Measurement run",
-        linetype = "Measurement run",
-        shape = "Measurement run"
+        colour = "Measurement file"
       )
   } else {
     plot <- ggplot2::ggplot(
@@ -369,12 +358,6 @@ make_timeseries_plot <- function(
       ggplot2::geom_line(
         linewidth = 0.55,
         colour = unname(run_colors[[1]]),
-        na.rm = TRUE
-      ) +
-      ggplot2::geom_point(
-        size = 0.65,
-        colour = unname(run_colors[[1]]),
-        alpha = 0.75,
         na.rm = TRUE
       ) +
       ggplot2::labs(x = NULL, y = NULL)
@@ -402,12 +385,7 @@ make_timeseries_plot <- function(
 
   plot <- plot +
     ggplot2::facet_wrap(ggplot2::vars(panel), ncol = 2, scales = "free_y") +
-    walz_plot_theme() +
-    ggplot2::guides(
-      colour = ggplot2::guide_legend(nrow = 2, byrow = TRUE),
-      linetype = ggplot2::guide_legend(nrow = 2, byrow = TRUE),
-      shape = ggplot2::guide_legend(nrow = 2, byrow = TRUE)
-    )
+    walz_plot_theme()
 
   widget <- plotly::ggplotly(
     plot,
@@ -457,7 +435,6 @@ make_state_plot <- function(
     rep_len(unname(run_colors), length(parsed_runs)),
     run_labels
   )
-  line_types <- stats::setNames(run_line_types(length(parsed_runs)), run_labels)
 
   pieces <- Map(
     state_long_data,
@@ -484,24 +461,15 @@ make_state_plot <- function(
         y = A,
         text = hover,
         colour = Run,
-        linetype = Run,
         group = Run
       )
     ) +
       ggplot2::geom_path(linewidth = 0.55, alpha = 0.7) +
-      ggplot2::geom_point(
-        ggplot2::aes(shape = Run),
-        size = 1.05,
-        alpha = 0.75
-      ) +
       ggplot2::scale_colour_manual(values = run_colors, drop = FALSE) +
-      ggplot2::scale_linetype_manual(values = line_types, drop = FALSE) +
       ggplot2::labs(
         x = NULL,
         y = a_label,
-        colour = "Measurement run",
-        linetype = "Measurement run",
-        shape = "Measurement run"
+        colour = "Measurement file"
       )
   } else {
     plot <- ggplot2::ggplot(
@@ -513,22 +481,12 @@ make_state_plot <- function(
         colour = unname(run_colors[[1]]),
         alpha = 0.75
       ) +
-      ggplot2::geom_point(
-        size = 1.1,
-        colour = unname(run_colors[[1]]),
-        alpha = 0.8
-      ) +
       ggplot2::labs(x = NULL, y = a_label)
   }
 
   plot <- plot +
     ggplot2::facet_wrap(ggplot2::vars(panel), ncol = 2, scales = "free_x") +
-    walz_plot_theme() +
-    ggplot2::guides(
-      colour = ggplot2::guide_legend(nrow = 2, byrow = TRUE),
-      linetype = ggplot2::guide_legend(nrow = 2, byrow = TRUE),
-      shape = ggplot2::guide_legend(nrow = 2, byrow = TRUE)
-    )
+    walz_plot_theme()
 
   widget <- plotly::ggplotly(
     plot,

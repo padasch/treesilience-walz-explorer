@@ -125,6 +125,30 @@ test_that("any number of runs overlay from elapsed minute zero with unique color
     function(axis) identical(axis$spikemode, "across+toaxis"),
     logical(1)
   )))
+  legend_names <- function(widget) {
+    widget_built <- plotly::plotly_build(widget)
+    legend_traces <- Filter(
+      function(trace) isTRUE(trace$showlegend),
+      widget_built$x$data
+    )
+    vapply(legend_traces, `[[`, character(1), "name")
+  }
+  expect_equal(legend_names(timeseries), labels)
+  expect_equal(legend_names(local_timeseries), labels)
+  expect_equal(legend_names(state), labels)
+  expect_length(built$x$data, length(labels) * 3L)
+  expect_true(all(vapply(
+    built$x$data,
+    function(trace) identical(trace$mode, "lines"),
+    logical(1)
+  )))
+  expect_true(all(vapply(
+    built$x$data,
+    function(trace) {
+      is.null(trace$line$dash) || identical(trace$line$dash, "solid")
+    },
+    logical(1)
+  )))
   local_built <- plotly::plotly_build(local_timeseries)
   local_annotations <- vapply(
     local_built$x$layout$annotations,
@@ -137,6 +161,13 @@ test_that("any number of runs overlay from elapsed minute zero with unique color
     "Local time (Europe/Zurich)",
     local_annotations,
     fixed = TRUE
+  )))
+  state_built <- plotly::plotly_build(state)
+  expect_length(state_built$x$data, length(labels) * 2L)
+  expect_true(all(vapply(
+    state_built$x$data,
+    function(trace) identical(trace$mode, "lines"),
+    logical(1)
   )))
   expect_length(unique(run_palette(12)), 12L)
 })

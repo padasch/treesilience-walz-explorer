@@ -47,7 +47,6 @@ test_that("duplicate exact metadata rows are retained and colors are distinct", 
 
   expect_equal(nrow(match_run_metadata(metadata, "run-one.csv")), 2L)
   expect_length(unique(run_palette(20)), 20L)
-  expect_equal(length(run_line_types(12)), 12L)
   expect_match(hex_to_rgba("#28754D", 0.1), "^rgba\\(")
 })
 
