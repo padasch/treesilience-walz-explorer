@@ -222,6 +222,38 @@ test_that("multi-run controls, metadata, plots, and protocols stay synchronized"
   })
 })
 
+test_that("the variable selector is always a two-column grid", {
+  stylesheet <- paste(
+    readLines(file.path(project_root, "www", "styles.css"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_match(
+    stylesheet,
+    "grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;",
+    fixed = TRUE
+  )
+  expect_match(
+    stylesheet,
+    "grid-auto-flow: row !important;",
+    fixed = TRUE
+  )
+  expect_match(stylesheet, "max-height: none !important;", fixed = TRUE)
+  expect_false(grepl("column-count: 2", stylesheet, fixed = TRUE))
+  expect_false(grepl("max-height: 25rem", stylesheet, fixed = TRUE))
+  expect_equal(
+    lengths(regmatches(
+      stylesheet,
+      gregexpr(
+        ".variable-selector .shiny-options-group",
+        stylesheet,
+        fixed = TRUE
+      )
+    )),
+    1L
+  )
+})
+
 test_that("dew-point tab requires explicit development opt-in", {
   skip_if_not_installed("shiny")
   skip_if_not_installed("bslib")
