@@ -22,6 +22,10 @@ test_that("multi-run controls, metadata, plots, and protocols stay synchronized"
   expect_match(page_html, "\"hideSelected\":true", fixed = TRUE)
   expect_match(page_html, "time_axis_mode", fixed = TRUE)
   expect_match(page_html, "value=\"elapsed\" checked", fixed = TRUE)
+  expect_match(page_html, "one_column_plots", fixed = TRUE)
+  expect_match(page_html, "One-column graph view", fixed = TRUE)
+  expect_match(page_html, "timeseries_plot_container", fixed = TRUE)
+  expect_match(page_html, "state_plot_container", fixed = TRUE)
   expect_match(page_html, "run_metadata_panel", fixed = TRUE)
   expect_match(page_html, "full_metadata_panel", fixed = TRUE)
   expect_match(page_html, "detail_accordion", fixed = TRUE)
@@ -196,6 +200,13 @@ test_that("multi-run controls, metadata, plots, and protocols stay synchronized"
     expect_s3_class(timeseries_widget_result()$value, "plotly")
     expect_null(state_widget_result()$error)
     expect_s3_class(state_widget_result()$value, "plotly")
+    expect_equal(plot_columns(), 2L)
+    expect_match(
+      output$timeseries_plot_container$html,
+      "height:900px",
+      fixed = TRUE
+    )
+    expect_match(output$state_plot_container$html, "height:850px", fixed = TRUE)
 
     built <- plotly::plotly_build(timeseries_widget_result()$value)
     axis_names <- grep("^[xy]axis[0-9]*$", names(built$x$layout), value = TRUE)
@@ -239,6 +250,23 @@ test_that("multi-run controls, metadata, plots, and protocols stay synchronized"
       local_annotations,
       fixed = TRUE
     )))
+
+    session$setInputs(one_column_plots = TRUE)
+    session$flushReact()
+    expect_equal(plot_columns(), 1L)
+    expect_match(
+      output$timeseries_plot_container$html,
+      "height:1050px",
+      fixed = TRUE
+    )
+    expect_match(output$state_plot_container$html, "height:870px", fixed = TRUE)
+    one_column_built <- plotly::plotly_build(timeseries_widget_result()$value)
+    one_column_x_axes <- grep(
+      "^xaxis[0-9]*$",
+      names(one_column_built$x$layout),
+      value = TRUE
+    )
+    expect_length(one_column_x_axes, 1L)
 
     expect_match(output$protocol_panel$html, "Run 1 measurement protocol", fixed = TRUE)
     expect_match(output$protocol_panel$html, "Run 2 measurement protocol", fixed = TRUE)

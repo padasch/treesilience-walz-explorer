@@ -230,6 +230,10 @@ body {
   padding: 0.9rem 0 0.45rem;
 }
 
+.plot-layout-control {
+  margin: 0.15rem 0 0.65rem;
+}
+
 .variable-selector .control-label {
   color: var(--walz-ink);
   font-weight: 700;

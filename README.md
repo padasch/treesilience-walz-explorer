@@ -12,6 +12,7 @@ No WALZ measurements, Google credentials, or thesis files are stored in this rep
 - Response parameters ordered as `A` (Net CO2), `GH2O`, and `E`, with `GH2O` selected by default
 - Defaults for `A`, `GH2O`, `Tcuv`, `Tamb`, `VPD`, `rh`, `ca`, `ci`, `White x T`, and `PARtop`
 - A timeseries x-axis toggle between elapsed time (the default, aligned from minute zero) and the original local time in Europe/Zurich
+- A graph-layout switch between the default two-column small multiples and a taller one-column stack
 - An arbitrary number of selected runs overlaid as solid lines, with one colour and one legend entry per measurement file and original timestamps retained in hover text
 - A collapsible metadata section below the plots with selected-run details first, joined by exact measurement filename stem to the sheet `timestamp` run ID and tinted with each run's plot color
 - The complete public metadata CSV below those selected-run details, read-only and sorted newest-first

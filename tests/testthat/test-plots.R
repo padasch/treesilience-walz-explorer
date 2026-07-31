@@ -60,6 +60,48 @@ test_that("numeric variables are grouped in physiological order", {
   expect_false("Tleaf" %in% WALZ_PLOT_VARIABLES)
 })
 
+test_that("plot panels switch between two-column and one-column layouts", {
+  skip_if_not_installed("plotly")
+  parsed <- read_walz_csv(fixture_path("walz_sample.csv"))
+  variables <- c("A", "GH2O", "Tcuv", "Tamb", "PARtop")
+
+  two_columns <- plotly::plotly_build(make_timeseries_plot(
+    parsed,
+    variables = variables,
+    columns = 2L
+  ))
+  one_column <- plotly::plotly_build(make_timeseries_plot(
+    parsed,
+    variables = variables,
+    columns = 1L
+  ))
+
+  two_column_x_axes <- grep(
+    "^xaxis[0-9]*$",
+    names(two_columns$x$layout),
+    value = TRUE
+  )
+  one_column_x_axes <- grep(
+    "^xaxis[0-9]*$",
+    names(one_column$x$layout),
+    value = TRUE
+  )
+
+  expect_length(two_column_x_axes, 2L)
+  expect_length(one_column_x_axes, 1L)
+  expect_equal(two_columns$height, 900L)
+  expect_equal(one_column$height, 1050L)
+  expect_equal(panel_plot_height(4L, 1L, 850L), 870L)
+  expect_error(
+    make_timeseries_plot(parsed, variables = variables, columns = 3L),
+    "either 1 or 2"
+  )
+  expect_error(
+    make_state_plot(parsed, variables = variables, columns = 0L),
+    "either 1 or 2"
+  )
+})
+
 test_that("any number of runs overlay from elapsed minute zero with unique colors", {
   skip_if_not_installed("plotly")
   primary <- read_walz_csv(fixture_path("walz_sample.csv"))

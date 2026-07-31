@@ -251,13 +251,38 @@ plotly_controls <- function(widget) {
   )
 }
 
+normalize_plot_columns <- function(columns = 2L) {
+  if (length(columns) != 1L) {
+    stop("Plot columns must be either 1 or 2.", call. = FALSE)
+  }
+  columns <- suppressWarnings(as.integer(columns))
+  if (is.na(columns) || !columns %in% c(1L, 2L)) {
+    stop("Plot columns must be either 1 or 2.", call. = FALSE)
+  }
+  columns
+}
+
+panel_plot_height <- function(panel_count, columns = 2L, minimum = 850L) {
+  columns <- normalize_plot_columns(columns)
+  panel_count <- suppressWarnings(as.integer(panel_count))
+  if (length(panel_count) != 1L || is.na(panel_count) || panel_count < 1L) {
+    panel_count <- 1L
+  }
+  rows <- ceiling(panel_count / columns)
+  pixels_per_row <- if (columns == 1L) 180L else 145L
+  as.integer(max(minimum, 150L + rows * pixels_per_row))
+}
+
 make_timeseries_plot <- function(
     parsed_runs,
     time_axis = c("elapsed", "local"),
     variables = WALZ_PLOT_VARIABLES,
     run_labels = NULL,
-    run_colors = NULL) {
+    run_colors = NULL,
+    columns = 2L,
+    height = NULL) {
   time_axis <- match.arg(time_axis)
+  columns <- normalize_plot_columns(columns)
   if (length(variables) == 0L) {
     stop("Select at least one numeric variable to draw the timeseries.", call. = FALSE)
   }
@@ -348,14 +373,22 @@ make_timeseries_plot <- function(
   }
 
   plot <- plot +
-    ggplot2::facet_wrap(ggplot2::vars(panel), ncol = 2, scales = "free_y") +
+    ggplot2::facet_wrap(
+      ggplot2::vars(panel),
+      ncol = columns,
+      scales = "free_y"
+    ) +
     walz_plot_theme()
+
+  if (is.null(height)) {
+    height <- panel_plot_height(length(unique(long$panel)), columns, 900L)
+  }
 
   widget <- plotly::ggplotly(
     plot,
     tooltip = "text",
     dynamicTicks = TRUE,
-    height = 900
+    height = height
   )
   plotly_controls(widget)
 }
@@ -364,7 +397,10 @@ make_state_plot <- function(
     parsed_runs,
     variables = WALZ_PLOT_VARIABLES,
     run_labels = NULL,
-    run_colors = NULL) {
+    run_colors = NULL,
+    columns = 2L,
+    height = NULL) {
+  columns <- normalize_plot_columns(columns)
   state_variables <- setdiff(variables, "A")
   if (length(state_variables) == 0L) {
     stop(
@@ -449,14 +485,22 @@ make_state_plot <- function(
   }
 
   plot <- plot +
-    ggplot2::facet_wrap(ggplot2::vars(panel), ncol = 2, scales = "free_x") +
+    ggplot2::facet_wrap(
+      ggplot2::vars(panel),
+      ncol = columns,
+      scales = "free_x"
+    ) +
     walz_plot_theme()
+
+  if (is.null(height)) {
+    height <- panel_plot_height(length(unique(long$panel)), columns, 850L)
+  }
 
   widget <- plotly::ggplotly(
     plot,
     tooltip = "text",
     dynamicTicks = TRUE,
-    height = 850
+    height = height
   )
   plotly_controls(widget)
 }

@@ -180,6 +180,14 @@ ui <- bslib::page_sidebar(
       selected = "elapsed",
       inline = TRUE
     ),
+    shiny::div(
+      class = "plot-layout-control",
+      bslib::input_switch(
+        "one_column_plots",
+        "One-column graph view",
+        value = FALSE
+      )
+    ),
     shiny::uiOutput("variable_selector"),
     shiny::actionButton(
       "refresh_latest",
@@ -204,12 +212,12 @@ ui <- bslib::page_sidebar(
     bslib::nav_panel(
       "Variables over time",
       shiny::uiOutput("timeseries_alerts"),
-      plotly::plotlyOutput("timeseries_plot", height = "900px")
+      shiny::uiOutput("timeseries_plot_container")
     ),
     bslib::nav_panel(
       "A vs state",
       shiny::uiOutput("state_alerts"),
-      plotly::plotlyOutput("state_plot", height = "850px")
+      shiny::uiOutput("state_plot_container")
     ),
     if (isTRUE(config$enable_dew_point_tab)) {
       bslib::nav_panel(
@@ -614,6 +622,33 @@ server <- function(input, output, session) {
     ))
   })
 
+  plot_columns <- shiny::reactive({
+    if (isTRUE(input$one_column_plots)) 1L else 2L
+  })
+
+  timeseries_plot_height <- shiny::reactive({
+    panel_plot_height(length(selected_variables()), plot_columns(), 900L)
+  })
+
+  state_plot_height <- shiny::reactive({
+    panel_count <- length(setdiff(selected_variables(), "A"))
+    panel_plot_height(panel_count, plot_columns(), 850L)
+  })
+
+  output$timeseries_plot_container <- shiny::renderUI({
+    plotly::plotlyOutput(
+      "timeseries_plot",
+      height = sprintf("%dpx", timeseries_plot_height())
+    )
+  })
+
+  output$state_plot_container <- shiny::renderUI({
+    plotly::plotlyOutput(
+      "state_plot",
+      height = sprintf("%dpx", state_plot_height())
+    )
+  })
+
   timeseries_widget_result <- shiny::reactive({
     entries <- valid_measurement_entries()
     if (length(entries) == 0L) {
@@ -631,7 +666,9 @@ server <- function(input, output, session) {
           },
           variables = selected_variables(),
           run_labels = vapply(entries, `[[`, character(1), "label"),
-          run_colors = vapply(entries, `[[`, character(1), "colour")
+          run_colors = vapply(entries, `[[`, character(1), "colour"),
+          columns = plot_columns(),
+          height = timeseries_plot_height()
         ),
         error = NULL
       ),
@@ -651,7 +688,9 @@ server <- function(input, output, session) {
           parsed_runs = lapply(entries, `[[`, "value"),
           variables = selected_variables(),
           run_labels = vapply(entries, `[[`, character(1), "label"),
-          run_colors = vapply(entries, `[[`, character(1), "colour")
+          run_colors = vapply(entries, `[[`, character(1), "colour"),
+          columns = plot_columns(),
+          height = state_plot_height()
         ),
         error = NULL
       ),
