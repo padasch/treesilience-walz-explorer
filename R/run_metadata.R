@@ -1,5 +1,6 @@
 WALZ_METADATA_COLUMN_LABELS <- c(
   timestamp = "Run ID",
+  .display_date = "Date",
   `TREE species` = "Tree species",
   `plant id` = "Plant ID",
   `WALZ walz number` = "WALZ number",
@@ -142,6 +143,117 @@ sort_run_metadata_newest <- function(metadata) {
   sorted <- metadata[sorted_rows, , drop = FALSE]
   rownames(sorted) <- NULL
   sorted
+}
+
+run_datetime_from_id <- function(run_id, timezone = WALZ_TIMEZONE) {
+  run_id <- trimws(as.character(run_id))
+  pattern <- "^([0-9]{4})([0-9]{2})([0-9]{2})_([0-9]{2})([0-9]{2}).*$"
+  matched <- grepl(pattern, run_id, perl = TRUE)
+  datetime_text <- rep(NA_character_, length(run_id))
+  datetime_text[matched] <- sub(
+    pattern,
+    "\\1\\2\\3 \\4:\\5",
+    run_id[matched],
+    perl = TRUE
+  )
+
+  parsed <- as.POSIXct(
+    strptime(datetime_text, format = "%Y%m%d %H:%M", tz = timezone)
+  )
+  valid <- !is.na(parsed)
+  round_trip <- rep(NA_character_, length(parsed))
+  round_trip[valid] <- format(parsed[valid], "%Y%m%d %H:%M", tz = timezone)
+  parsed[valid & round_trip != datetime_text] <- as.POSIXct(NA, tz = timezone)
+  parsed
+}
+
+relative_run_date <- function(
+    run_id,
+    reference_time = Sys.time(),
+    timezone = WALZ_TIMEZONE) {
+  run_time <- run_datetime_from_id(run_id, timezone)
+  if (length(run_time) == 0L) {
+    return(character())
+  }
+
+  weekdays <- c("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+  months <- c(
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+  )
+  valid <- !is.na(run_time)
+  labels <- rep(NA_character_, length(run_time))
+  if (!any(valid)) {
+    return(labels)
+  }
+
+  run_dates <- as.Date(run_time, tz = timezone)
+  reference_date <- as.Date(reference_time, tz = timezone)
+  day_difference <- as.integer(reference_date - run_dates)
+  weekday_index <- as.integer(format(run_time, "%u", tz = timezone))
+  month_index <- as.integer(format(run_time, "%m", tz = timezone))
+  absolute_label <- sprintf(
+    "%s %d %s, %s",
+    weekdays[weekday_index],
+    as.integer(format(run_time, "%d", tz = timezone)),
+    months[month_index],
+    format(run_time, "%H:%M", tz = timezone)
+  )
+
+  relative_label <- ifelse(
+    day_difference == 0L,
+    "Today",
+    ifelse(
+      day_difference == 1L,
+      "Yesterday",
+      ifelse(
+        day_difference == 2L,
+        "Two days ago",
+        ifelse(
+          day_difference > 2L,
+          sprintf("%d days ago", day_difference),
+          ifelse(
+            day_difference == -1L,
+            "Tomorrow",
+            ifelse(
+              day_difference == -2L,
+              "In two days",
+              sprintf("In %d days", abs(day_difference))
+            )
+          )
+        )
+      )
+    )
+  )
+  labels[valid] <- sprintf(
+    "%s (%s)",
+    relative_label[valid],
+    absolute_label[valid]
+  )
+  labels
+}
+
+add_run_date_display <- function(
+    metadata,
+    reference_time = Sys.time(),
+    timezone = WALZ_TIMEZONE) {
+  if (is.null(metadata) || !is.data.frame(metadata) || !"timestamp" %in% names(metadata)) {
+    return(metadata)
+  }
+
+  metadata$.display_date <- relative_run_date(
+    metadata$timestamp,
+    reference_time = reference_time,
+    timezone = timezone
+  )
+  columns_without_date <- setdiff(names(metadata), ".display_date")
+  timestamp_position <- match("timestamp", columns_without_date)
+  display_columns <- append(
+    columns_without_date,
+    ".display_date",
+    after = timestamp_position
+  )
+  metadata[, display_columns, drop = FALSE]
 }
 
 metadata_column_label <- function(column) {

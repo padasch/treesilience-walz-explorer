@@ -16,6 +16,7 @@ No WALZ measurements, Google credentials, or thesis files are stored in this rep
 - An arbitrary number of selected runs overlaid as solid lines, with one colour and one legend entry per measurement file and original timestamps retained in hover text
 - A collapsible metadata section below the plots with selected-run details first, joined by exact measurement filename stem to the sheet `timestamp` run ID and tinted with each run's plot color
 - The complete public metadata CSV below those selected-run details, read-only and sorted newest-first
+- A display-only Date column derived from each `YYYYMMDD_HHMM` run ID, combining relative and absolute Europe/Zurich time
 - A second interactive **A vs state** view controlled by the same variable checkboxes
 - Plotly zoom, pan, cursor crosshairs, compact exact-value hover, line drawing, freehand drawing, and erasing
 - A separate collapsible protocol section with the raw matched TXT file for each displayed run, shown as escaped text

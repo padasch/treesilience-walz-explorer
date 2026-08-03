@@ -1053,7 +1053,12 @@ server <- function(input, output, session) {
       ))
     }
 
-    metadata_columns <- setdiff(names(metadata), ".run_id")
+    display_reference_time <- Sys.time()
+    source_metadata_columns <- setdiff(names(metadata), ".run_id")
+    metadata_columns <- setdiff(
+      names(add_run_date_display(metadata, display_reference_time)),
+      ".run_id"
+    )
     table_rows <- list()
     unmatched <- character()
     duplicate_matches <- character()
@@ -1066,8 +1071,8 @@ server <- function(input, output, session) {
         unmatched <- c(unmatched, measurement_run_id(record$name[[1]]))
         matches <- as.data.frame(
           stats::setNames(
-            as.list(rep("", length(metadata_columns))),
-            metadata_columns
+            as.list(rep("", length(source_metadata_columns))),
+            source_metadata_columns
           ),
           stringsAsFactors = FALSE,
           check.names = FALSE
@@ -1088,11 +1093,20 @@ server <- function(input, output, session) {
         }
       }
 
+      matches <- add_run_date_display(matches, display_reference_time)
+
       for (match_index in seq_len(nrow(matches))) {
         cells <- lapply(metadata_columns, function(column) {
           value <- matches[[column]][[match_index]]
           if (is.na(value) || !nzchar(value)) value <- "—"
-          shiny::tags$td(value)
+          shiny::tags$td(
+            class = if (identical(column, ".display_date")) {
+              "run-date-cell"
+            } else {
+              NULL
+            },
+            value
+          )
         })
         table_rows <- c(table_rows, list(shiny::tags$tr(
           class = if (match_label == "No exact sheet row") {
@@ -1163,7 +1177,14 @@ server <- function(input, output, session) {
             shiny::tags$th("Measurement file"),
             shiny::tags$th("Metadata match"),
             lapply(metadata_columns, function(column) {
-              shiny::tags$th(metadata_column_label(column))
+              shiny::tags$th(
+                class = if (identical(column, ".display_date")) {
+                  "run-date-cell"
+                } else {
+                  NULL
+                },
+                metadata_column_label(column)
+              )
             })
           )),
           shiny::tags$tbody(table_rows)
@@ -1173,7 +1194,10 @@ server <- function(input, output, session) {
   })
 
   output$full_metadata_panel <- shiny::renderUI({
-    metadata <- sort_run_metadata_newest(run_metadata())
+    metadata <- add_run_date_display(
+      sort_run_metadata_newest(run_metadata()),
+      reference_time = Sys.time()
+    )
 
     if (is.null(metadata)) {
       message <- metadata_error()
@@ -1208,7 +1232,14 @@ server <- function(input, output, session) {
       shiny::tags$tr(lapply(metadata_columns, function(column) {
         value <- metadata[[column]][[row_index]]
         if (is.na(value) || !nzchar(value)) value <- "—"
-        shiny::tags$td(value)
+        shiny::tags$td(
+          class = if (identical(column, ".display_date")) {
+            "run-date-cell"
+          } else {
+            NULL
+          },
+          value
+        )
       }))
     })
 
@@ -1237,6 +1268,11 @@ server <- function(input, output, session) {
             lapply(metadata_columns, function(column) {
               shiny::tags$th(
                 scope = "col",
+                class = if (identical(column, ".display_date")) {
+                  "run-date-cell"
+                } else {
+                  NULL
+                },
                 metadata_column_label(column)
               )
             })

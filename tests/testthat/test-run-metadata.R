@@ -66,6 +66,48 @@ test_that("full metadata can be sorted newest first by run timestamp", {
   expect_equal(rownames(sorted), as.character(seq_len(nrow(sorted))))
 })
 
+test_that("run IDs produce deterministic relative and absolute date labels", {
+  reference_time <- as.POSIXct(
+    "2026-08-03 12:00:00",
+    tz = WALZ_TIMEZONE
+  )
+  run_ids <- c(
+    "20260803_1123_B2",
+    "20260802_0915_O1",
+    "20260801_1844_P1",
+    "20260730_0705_B1",
+    "20260804_0810_O2",
+    "not-a-run-id"
+  )
+
+  expect_equal(
+    relative_run_date(run_ids, reference_time),
+    c(
+      "Today (Mon 3 Aug, 11:23)",
+      "Yesterday (Sun 2 Aug, 09:15)",
+      "Two days ago (Sat 1 Aug, 18:44)",
+      "4 days ago (Thu 30 Jul, 07:05)",
+      "Tomorrow (Tue 4 Aug, 08:10)",
+      NA_character_
+    )
+  )
+  expect_true(is.na(run_datetime_from_id("20260230_1200_B1")))
+
+  display <- add_run_date_display(
+    clean_run_metadata(data.frame(
+      timestamp = run_ids[1:2],
+      species = c("beech", "oak"),
+      stringsAsFactors = FALSE
+    )),
+    reference_time
+  )
+  expect_equal(
+    names(display)[1:3],
+    c("timestamp", ".display_date", "species")
+  )
+  expect_equal(metadata_column_label(".display_date"), "Date")
+})
+
 test_that("duplicate exact metadata rows are retained and colors are distinct", {
   metadata <- clean_run_metadata(data.frame(
     timestamp = c("run-one", "run-one"),

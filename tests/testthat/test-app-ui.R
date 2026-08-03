@@ -153,6 +153,11 @@ test_that("multi-run controls, metadata, plots, and protocols stay synchronized"
     )
     expect_match(full_metadata_html, "Newest run IDs are shown first.", fixed = TRUE)
     expect_match(full_metadata_html, "<table", fixed = TRUE)
+    expect_match(full_metadata_html, "run-date-cell", fixed = TRUE)
+    expect_gt(
+      regexpr(">Date</th>", full_metadata_html, fixed = TRUE)[[1]],
+      regexpr(">Run ID</th>", full_metadata_html, fixed = TRUE)[[1]]
+    )
     expect_match(full_metadata_html, "beech", fixed = TRUE)
     expect_match(full_metadata_html, "oak", fixed = TRUE)
     expect_false(grepl("<input", full_metadata_html, fixed = TRUE))
@@ -178,6 +183,11 @@ test_that("multi-run controls, metadata, plots, and protocols stay synchronized"
     expect_match(metadata_html, "beech", fixed = TRUE)
     expect_match(metadata_html, "oak", fixed = TRUE)
     expect_match(metadata_html, "Exact ID", fixed = TRUE)
+    expect_match(metadata_html, "run-date-cell", fixed = TRUE)
+    expect_gt(
+      regexpr(">Date</th>", metadata_html, fixed = TRUE)[[1]],
+      regexpr(">Run ID</th>", metadata_html, fixed = TRUE)[[1]]
+    )
     expect_match(
       metadata_html,
       "filename stem = sheet Run ID",
