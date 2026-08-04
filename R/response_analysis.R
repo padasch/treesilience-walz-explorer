@@ -674,7 +674,7 @@ response_analysis_server <- function(
       selected <- selected[selected %in% as.character(current$id)]
       shiny::updateSelectizeInput(
         session, "manual_runs", choices = response_run_choices(current),
-        selected = selected, server = TRUE
+        selected = selected, server = FALSE
       )
     })
 
@@ -710,7 +710,7 @@ response_analysis_server <- function(
       resolved <- resolve_response_preset(input$run_preset, current)
       shiny::updateSelectizeInput(
         session, "manual_runs", choices = response_run_choices(current),
-        selected = resolved$ids, server = TRUE
+        selected = resolved$ids, server = FALSE
       )
     }, ignoreInit = TRUE)
 
