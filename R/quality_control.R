@@ -139,14 +139,20 @@ make_qc_overview_plot <- function(step_data) {
   labels <- c(Good = "good", Medium = "medium", Bad = "bad", Unassessed = "unassessed")
   if (is.null(step_data) || nrow(step_data) == 0L) {
     return(list(
-      widget = plotly::plotly_empty(type = "scatter", mode = "lines"),
+      widget = plotly::event_register(
+        plotly::plotly_empty(type = "scatter", mode = "lines"),
+        "plotly_click"
+      ),
       warnings = character()
     ))
   }
   complete <- step_data[step_data$window_complete, , drop = FALSE]
   if (nrow(complete) == 0L) {
     return(list(
-      widget = plotly::plotly_empty(type = "scatter", mode = "lines"),
+      widget = plotly::event_register(
+        plotly::plotly_empty(type = "scatter", mode = "lines"),
+        "plotly_click"
+      ),
       warnings = "No complete extraction windows are available."
     ))
   }
@@ -313,14 +319,104 @@ quality_metadata_table_ui <- function(catalog, title = "Runs in this view") {
   )
 }
 
+qc_run_choices <- function(catalog) {
+  if (is.null(catalog) || nrow(catalog) == 0L) return(character())
+  labels <- sprintf(
+    "%s — %s · %s · %s",
+    catalog$run_id,
+    ifelse(nzchar(catalog$species), catalog$species, "species unavailable"),
+    ifelse(nzchar(catalog$plant_id), paste("plant", catalog$plant_id), "plant unavailable"),
+    tools::toTitleCase(catalog$quality)
+  )
+  stats::setNames(as.character(catalog$id), labels)
+}
+
+manual_qc_catalog <- function(catalog, selected_ids) {
+  selected_ids <- as.character(selected_ids)
+  selected_ids <- selected_ids[!is.na(selected_ids) & nzchar(selected_ids)]
+  if (is.null(catalog)) return(data.frame())
+  if (nrow(catalog) == 0L || length(selected_ids) == 0L) {
+    return(catalog[0, , drop = FALSE])
+  }
+  positions <- match(selected_ids, as.character(catalog$id))
+  catalog[positions[!is.na(positions)], , drop = FALSE]
+}
+
+qc_selected_run_control_state <- function(catalog, current_run, previous_choices) {
+  choices <- if (is.null(catalog) || nrow(catalog) == 0L) {
+    character()
+  } else {
+    stats::setNames(catalog$run_id, catalog$run_id)
+  }
+  values <- unname(choices)
+  current_run <- if (is.null(current_run) || length(current_run) == 0L) {
+    ""
+  } else {
+    as.character(current_run[[1]])
+  }
+  desired_run <- if (nzchar(current_run) && current_run %in% values) {
+    current_run
+  } else if (length(values) > 0L) {
+    values[[1]]
+  } else {
+    ""
+  }
+  previous_choices <- as.character(previous_choices)
+  list(
+    choices = choices,
+    values = values,
+    selected = if (nzchar(desired_run)) desired_run else character(),
+    update = !identical(values, previous_choices) || !identical(current_run, desired_run)
+  )
+}
+
 qc_sidebar_ui <- function(id) {
   ns <- shiny::NS(id)
   shiny::tagList(
     shiny::h5("Quality overview"),
-    shiny::selectizeInput(ns("species"), "Species", choices = character(), multiple = TRUE),
-    shiny::selectizeInput(ns("plant_ids"), "Plant IDs", choices = character(), multiple = TRUE),
-    shiny::dateRangeInput(ns("date_range"), "Run date"),
-    shiny::p(class = "control-help", "All four quality groups remain visible; these filters control which runs are compared."),
+    shiny::radioButtons(
+      ns("selection_mode"), "How to choose runs",
+      choices = c(
+        "Filter by metadata" = "filters",
+        "Choose runs manually" = "manual"
+      ),
+      selected = "filters"
+    ),
+    shiny::conditionalPanel(
+      condition = "input.selection_mode === 'filters'",
+      ns = ns,
+      shiny::selectizeInput(ns("species"), "Species", choices = character(), multiple = TRUE),
+      shiny::selectizeInput(ns("plant_ids"), "Plant IDs", choices = character(), multiple = TRUE),
+      shiny::checkboxGroupInput(
+        ns("qualities"), "Quality assessment",
+        choices = c(
+          "Good" = "good", "Medium" = "medium",
+          "Bad" = "bad", "Unassessed" = "unassessed"
+        ),
+        selected = c("good", "medium", "bad", "unassessed")
+      ),
+      shiny::dateRangeInput(ns("date_range"), "Run date"),
+      shiny::p(
+        class = "control-help",
+        "All four quality panels stay in place; these filters control which runs are compared."
+      )
+    ),
+    shiny::conditionalPanel(
+      condition = "input.selection_mode === 'manual'",
+      ns = ns,
+      shiny::selectizeInput(
+        ns("manual_runs"), "Measurement runs",
+        choices = character(), selected = character(), multiple = TRUE,
+        options = list(
+          plugins = list("remove_button"), closeAfterSelect = FALSE,
+          hideSelected = TRUE, placeholder = "Select one or more runs"
+        )
+      ),
+      shiny::p(
+        class = "control-help",
+        "Add any set of runs to compare. The menu stays open while you select multiple runs."
+      )
+    ),
     shiny::p(
       class = "control-help",
       "Quality labels are read from the metadata sheet and are not editable in this app."
@@ -368,6 +464,9 @@ quality_control_server <- function(
     prepared <- shiny::reactiveVal(list())
     progress <- shiny::reactiveVal(list(done = 0L, total = 0L, loading = FALSE, error = NULL))
     started <- shiny::reactiveVal(FALSE)
+    manual_choice_signature <- shiny::reactiveVal(character())
+    selected_run_choice_values <- shiny::reactiveVal(character())
+    selected_entry_state <- shiny::reactiveVal(list(id = "", value = NULL))
     catalog <- shiny::reactive(build_run_catalog(measurements(), metadata()))
 
     shiny::observe({
@@ -381,10 +480,31 @@ quality_control_server <- function(
       if (length(dates) > 0L) {
         shiny::updateDateRangeInput(session, "date_range", start = min(dates), end = max(dates))
       }
+      manual_choices <- qc_run_choices(current)
+      current_ids <- unname(manual_choices)
+      choice_signature <- paste(names(manual_choices), current_ids, sep = "::")
+      if (!identical(choice_signature, manual_choice_signature())) {
+        selected <- if (is.null(input$manual_runs)) character() else input$manual_runs
+        selected <- selected[selected %in% current_ids]
+        shiny::freezeReactiveValue(input, "manual_runs")
+        shiny::updateSelectizeInput(
+          session, "manual_runs", choices = manual_choices,
+          selected = selected, server = FALSE
+        )
+        manual_choice_signature(choice_signature)
+      }
     })
 
     scoped_catalog <- shiny::reactive({
-      filter_run_catalog(catalog(), input$species, input$plant_ids, input$date_range)
+      current <- catalog()
+      mode <- if (is.null(input$selection_mode)) "filters" else input$selection_mode
+      if (identical(mode, "manual")) {
+        return(manual_qc_catalog(current, input$manual_runs))
+      }
+      filter_run_catalog(
+        current, input$species, input$plant_ids, input$date_range,
+        qualities = input$qualities
+      )
     })
 
     prepare_entry <- function(record, parsed = NULL, error = NULL) {
@@ -516,14 +636,16 @@ quality_control_server <- function(
 
     shiny::observe({
       current <- scoped_catalog()
-      choices <- stats::setNames(current$run_id, current$run_id)
-      selected <- if (!is.null(input$selected_run) && input$selected_run %in% choices) {
-        input$selected_run
-      } else if (length(choices) > 0L) unname(choices[[1]]) else character()
-      shiny::updateSelectizeInput(
-        session, "selected_run", choices = choices,
-        selected = selected, server = TRUE
+      state <- qc_selected_run_control_state(
+        current, input$selected_run, selected_run_choice_values()
       )
+      if (!isTRUE(state$update)) return()
+      shiny::freezeReactiveValue(input, "selected_run")
+      shiny::updateSelectizeInput(
+        session, "selected_run", choices = state$choices,
+        selected = state$selected, server = TRUE
+      )
+      selected_run_choice_values(state$values)
     })
 
     qc_click <- shiny::reactive({
@@ -545,9 +667,16 @@ quality_control_server <- function(
       current[current$run_id == selected_run, , drop = FALSE]
     })
     selected_entry <- shiny::reactive({
+      selected_entry_state()$value
+    })
+    shiny::observe({
       selected <- selected_catalog()
-      if (nrow(selected) != 1L) return(NULL)
-      prepared()[[selected$id[[1]]]]
+      selected_id <- if (nrow(selected) == 1L) as.character(selected$id[[1]]) else ""
+      candidate <- if (nzchar(selected_id)) prepared()[[selected_id]] else NULL
+      previous <- selected_entry_state()
+      if (!identical(previous$id, selected_id) || !identical(previous$value, candidate)) {
+        selected_entry_state(list(id = selected_id, value = candidate))
+      }
     })
 
     output$audit <- plotly::renderPlotly(make_qc_audit_plot(selected_entry()))

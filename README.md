@@ -32,7 +32,7 @@ No WALZ measurements, Google credentials, or thesis files are stored in this rep
 - Exactly one color and trace per run, using stable colors across tabs and quality changes
 - Final-three-minute means for every stable light step, including the terminal step
 - A click-selectable raw audit with A, PPFD, extraction windows, SD, within-window A slope, coverage, completeness, and structural warnings
-- Optional species, plant-ID, and date filters plus a color-matched metadata table
+- Switchable metadata filters or manual multi-run selection, plus a color-matched metadata table
 - Read-only quality overview; assessments are edited manually in the linked metadata Sheet
 
 ### Response Analysis
@@ -43,7 +43,7 @@ No WALZ measurements, Google credentials, or thesis files are stored in this rep
 - Light and temperature optima with ≥90% near-optimal ranges and explicit boundary/interior/no-positive-optimum status
 - Interactive raw and fitted Tleaf × PPFD × A views with predictions masked outside observed support
 - Coverage checks, deviance explained, RMSE, basis diagnostics, leave-one-run-out predictive R², boundary-optimum proportion, and CSV downloads
-- Raw and extraction results remain available when coverage or diagnostics are too weak; all fitted charts and optima are replaced by one warning that lists the failing metrics
+- Low model-quality metrics produce a prominent warning, while fitted charts, surfaces, optima, diagnostics, and downloads remain visible for cautious interpretation
 
 ## Dew-point calculation status
 
@@ -78,7 +78,7 @@ Quality Control is intentionally read-only. It groups curves using the public me
 
 ## Response model
 
-The exploratory species-level model is `A_mean ~ te(Tleaf_mean, log1p(PPFD_mean))`, fitted by REML with smoothing selection. Fitting requires at least four distinct runs, four measured light levels, and 16 complete extraction windows. Predictions outside the linear-interpolation support are masked. All fitted outputs are hidden when deviance explained, adjusted R², or leave-one-run-out predictive R² is below 0.5, when the GAM basis check fails, or when more than half of optima occur at sampled boundaries.
+The exploratory species-level model is `A_mean ~ te(Tleaf_mean, log1p(PPFD_mean))`, fitted by REML with smoothing selection. Fitting requires at least four distinct runs, four measured light levels, and 16 complete extraction windows. Predictions outside the linear-interpolation support are masked. Low deviance explained, adjusted R², leave-one-run-out predictive R², GAM basis checks, or excessive boundary optima trigger a prominent caution with the failing metrics; the fitted outputs remain visible.
 
 Response Analysis supports two selection modes. Metadata filters retain the Good-only default; manual selection can include any available files, including runs without a metadata match. The separate First Analysis presets contain ten Oak temperature runs or ten Beech temperature runs; species are never combined by a preset. The observed and modeled line charts use continuous color bars for mean leaf temperature and measured PPFD, respectively. Run identity colors elsewhere in the application use the Dark2 palette consistently.
 

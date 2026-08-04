@@ -229,7 +229,7 @@ fit_response_gam <- function(data, grid_size = 70L, basis_dimensions = c(5L, 5L)
   diagnostics$interpretation <- if (diagnostics$supported) {
     "Diagnostics support exploratory surface and optimum summaries."
   } else {
-    paste("Surface and optimum claims are suppressed because", paste(reasons, collapse = "; "))
+    paste("Interpret fitted outputs cautiously because", paste(reasons, collapse = "; "))
   }
 
   list(
@@ -463,7 +463,7 @@ make_observed_response_plot <- function(steps) {
 }
 
 make_temperature_slice_plot <- function(model_result) {
-  if (is.null(model_result$model) || !isTRUE(model_result$supported)) {
+  if (is.null(model_result$model)) {
     return(plotly::plotly_empty(type = "scatter", mode = "lines"))
   }
   grid <- model_result$grid
@@ -515,7 +515,7 @@ make_raw_response_3d <- function(steps) {
 }
 
 make_surface_response_3d <- function(model_result) {
-  if (is.null(model_result$model) || !isTRUE(model_result$supported)) {
+  if (is.null(model_result$model)) {
     return(plotly::plotly_empty(type = "scatter3d", mode = "markers"))
   }
   grid <- model_result$grid
@@ -601,9 +601,9 @@ model_fit_warning_message <- function(model_result) {
     reasons <- "one or more model-quality checks were not adequate"
   }
   paste0(
-    "Fitted outputs are hidden because model quality is too low: ",
+    "Model quality is low: ",
     paste(reasons, collapse = "; "),
-    ". Raw and extracted observations remain available."
+    ". The fitted curves, surface, and optima are still shown, but should be interpreted cautiously."
   )
 }
 
@@ -614,13 +614,16 @@ response_model_section_ui <- function(ns, model_result = NULL) {
       alert_ui("Run the analysis to fit the exploratory response model.", "info")
     ))
   }
-  if (!identical(model_result$status, "success") || !isTRUE(model_result$supported)) {
+  if (!identical(model_result$status, "success")) {
     return(bslib::card(
-      bslib::card_header("Fitted response not shown"),
+      bslib::card_header("Fitted response unavailable"),
       alert_ui(model_fit_warning_message(model_result), "warning")
     ))
   }
   shiny::tagList(
+    if (!isTRUE(model_result$supported)) {
+      alert_ui(model_fit_warning_message(model_result), "warning")
+    },
     shiny::div(
       class = "response-two-column",
       bslib::card(
@@ -640,15 +643,13 @@ response_model_section_ui <- function(ns, model_result = NULL) {
 }
 
 response_download_buttons_ui <- function(ns, model_result = NULL) {
-  supported <- !is.null(model_result) &&
-    identical(model_result$status, "success") &&
-    isTRUE(model_result$supported)
+  fitted <- !is.null(model_result) && identical(model_result$status, "success")
   shiny::div(
     class = "download-grid",
     shiny::downloadButton(ns("download_steps"), "Extracted steps"),
-    if (supported) shiny::downloadButton(ns("download_predictions"), "Model predictions") else NULL,
-    if (supported) shiny::downloadButton(ns("download_optima"), "Optima") else NULL,
-    if (!is.null(model_result) && identical(model_result$status, "success")) {
+    if (fitted) shiny::downloadButton(ns("download_predictions"), "Model predictions") else NULL,
+    if (fitted) shiny::downloadButton(ns("download_optima"), "Optima") else NULL,
+    if (fitted) {
       shiny::downloadButton(ns("download_diagnostics"), "Diagnostics")
     } else NULL
   )
@@ -1000,8 +1001,8 @@ response_analysis_server <- function(
     output$optima_table <- shiny::renderUI({
       value <- result()
       if (is.null(value)) return(alert_ui("Run the analysis to estimate optima.", "info"))
-      if (!identical(value$model$status, "success") || !isTRUE(value$model$supported)) {
-        return(alert_ui("Optimum estimates are suppressed until coverage and model diagnostics are adequate.", "warning"))
+      if (!identical(value$model$status, "success")) {
+        return(alert_ui("Optimum estimates are unavailable because the model could not be fitted.", "warning"))
       }
       simple_data_table_ui(value$model$optima$all)
     })
@@ -1028,10 +1029,10 @@ response_analysis_server <- function(
       shiny::req(result()); result()$steps
     })
     output$download_predictions <- csv_download("walz-model-predictions.csv", function() {
-      shiny::req(result(), identical(result()$model$status, "success"), result()$model$supported); result()$model$grid
+      shiny::req(result(), identical(result()$model$status, "success")); result()$model$grid
     })
     output$download_optima <- csv_download("walz-optima.csv", function() {
-      shiny::req(result(), identical(result()$model$status, "success"), result()$model$supported); result()$model$optima$all
+      shiny::req(result(), identical(result()$model$status, "success")); result()$model$optima$all
     })
     output$download_diagnostics <- csv_download("walz-model-diagnostics.csv", function() {
       shiny::req(result(), identical(result()$model$status, "success")); result()$model$diagnostics

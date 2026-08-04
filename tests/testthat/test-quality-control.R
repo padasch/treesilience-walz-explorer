@@ -45,3 +45,34 @@ test_that("QC normalization keeps negative A and omits non-positive runs", {
     logical(1)
   )))
 })
+
+test_that("QC manual selection preserves the requested run order", {
+  catalog <- data.frame(
+    id = c("a", "b", "c"), run_id = c("run-a", "run-b", "run-c"),
+    species = c("oak", "", "beech"), plant_id = c("1", "", "2"),
+    quality = c("good", "unassessed", "bad"), stringsAsFactors = FALSE
+  )
+  selected <- manual_qc_catalog(catalog, c("c", "a", "missing"))
+  expect_equal(selected$id, c("c", "a"))
+  choices <- qc_run_choices(catalog)
+  expect_equal(unname(choices), catalog$id)
+  expect_true(any(grepl("species unavailable", names(choices), fixed = TRUE)))
+})
+
+test_that("QC selected-run control updates only when choices or selection change", {
+  catalog <- data.frame(run_id = c("run-a", "run-b"), stringsAsFactors = FALSE)
+  initial <- qc_selected_run_control_state(catalog, NULL, character())
+  expect_true(initial$update)
+  expect_equal(initial$selected, "run-a")
+
+  stable <- qc_selected_run_control_state(catalog, "run-a", initial$values)
+  expect_false(stable$update)
+
+  changed_selection <- qc_selected_run_control_state(catalog, "run-b", initial$values)
+  expect_false(changed_selection$update)
+  expect_equal(changed_selection$selected, "run-b")
+
+  reduced <- qc_selected_run_control_state(catalog[2, , drop = FALSE], "run-a", initial$values)
+  expect_true(reduced$update)
+  expect_equal(reduced$selected, "run-b")
+})

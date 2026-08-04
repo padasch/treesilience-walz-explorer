@@ -121,7 +121,7 @@ test_that("response line plots expose continuous color legends", {
   expect_equal(slices$x$data[[1]]$marker$colorbar$title$text, "Measured PPFD")
 })
 
-test_that("poor model fits show one metric warning and no fitted outputs", {
+test_that("poor model fits show one metric warning and retain fitted outputs", {
   bad_model <- list(
     status = "success", supported = FALSE,
     diagnostics = data.frame(
@@ -138,21 +138,22 @@ test_that("poor model fits show one metric warning and no fitted outputs", {
   expect_match(message, "predictive R² = 0.18", fixed = TRUE)
   expect_match(message, "basis-check p-value = 0.012", fixed = TRUE)
   expect_match(message, "boundary optima = 70%", fixed = TRUE)
+  expect_match(message, "still shown", fixed = TRUE)
 
   poor_html <- htmltools::renderTags(
     response_model_section_ui(shiny::NS("analysis"), bad_model)
   )$html
-  expect_match(poor_html, "Fitted response not shown", fixed = TRUE)
-  expect_false(grepl("analysis-temperature_plot", poor_html, fixed = TRUE))
-  expect_false(grepl("analysis-surface_3d", poor_html, fixed = TRUE))
-  expect_false(grepl("analysis-optima_table", poor_html, fixed = TRUE))
+  expect_match(poor_html, "Model quality is low", fixed = TRUE)
+  expect_match(poor_html, "analysis-temperature_plot", fixed = TRUE)
+  expect_match(poor_html, "analysis-surface_3d", fixed = TRUE)
+  expect_match(poor_html, "analysis-optima_table", fixed = TRUE)
   poor_download_html <- htmltools::renderTags(
     response_download_buttons_ui(shiny::NS("analysis"), bad_model)
   )$html
   expect_match(poor_download_html, "Extracted steps", fixed = TRUE)
   expect_match(poor_download_html, "Diagnostics", fixed = TRUE)
-  expect_false(grepl("Model predictions", poor_download_html, fixed = TRUE))
-  expect_false(grepl("analysis-download_optima", poor_download_html, fixed = TRUE))
+  expect_match(poor_download_html, "Model predictions", fixed = TRUE)
+  expect_match(poor_download_html, "analysis-download_optima", fixed = TRUE)
 
   good_model <- bad_model
   good_model$supported <- TRUE
@@ -167,4 +168,16 @@ test_that("poor model fits show one metric warning and no fitted outputs", {
   )$html
   expect_match(good_download_html, "Model predictions", fixed = TRUE)
   expect_match(good_download_html, "analysis-download_optima", fixed = TRUE)
+})
+
+test_that("low diagnostics do not blank fitted response plots", {
+  model <- fit_response_gam(make_response_steps(), grid_size = 30L)
+  expect_equal(model$status, "success")
+  model$supported <- FALSE
+  temperature <- suppressMessages(plotly::plotly_build(make_temperature_slice_plot(model)))
+  surface <- suppressWarnings(suppressMessages(
+    plotly::plotly_build(make_surface_response_3d(model))
+  ))
+  expect_gt(length(temperature$x$data), 0L)
+  expect_gt(length(surface$x$data), 0L)
 })
