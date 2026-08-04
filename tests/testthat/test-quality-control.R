@@ -21,69 +21,101 @@ test_that("catalog keeps unmatched runs and canonicalizes quality", {
   expect_equal(catalog$metadata_status[[3]], "No metadata row")
   expect_equal(stable_run_colour(catalog$run_id), catalog$colour)
 })
-test_that("QC normalization keeps negative A and omits non-positive runs", {
-  data <- data.frame(
-    run_id = rep(c("positive", "negative"), each = 3),
-    PPFD_mean = rep(c(0, 100, 500), 2), PPFD_sd = 1,
-    A_mean = c(-2, 2, 4, -4, -2, 0), A_sd = .1, A_slope = 0,
-    coverage = 1, window_complete = TRUE, quality = "good",
-    species = "oak", plant_id = "1", metadata_status = "Exact ID",
-    colour = rep(c("#28754D", "#BD5D38"), each = 3),
-    stringsAsFactors = FALSE
+make_qc_timeseries_fixture <- function() {
+  start <- as.POSIXct("2026-08-01 10:00:00", tz = WALZ_TIMEZONE)
+  make_entry <- function(values) {
+    raw <- data.frame(
+      Datetime = start + 0:6 * 60,
+      .elapsed_minutes = 0:6,
+      A = values,
+      stringsAsFactors = FALSE
+    )
+    summary <- data.frame(
+      step_id = 1:2,
+      window_start = start + c(0, 3) * 60,
+      window_end = start + c(2, 6) * 60,
+      A_mean = c(mean(values[1:3]), mean(values[4:7])),
+      A_sd = c(stats::sd(values[1:3]), stats::sd(values[4:7])),
+      PPFD_mean = c(100, 500), coverage = 1,
+      stringsAsFactors = FALSE
+    )
+    list(error = NULL, extraction = list(raw = raw, summary = summary))
+  }
+  list(
+    prepared = list(
+      a = make_entry(c(-1, 0, 1, 2, 4, 3, 2)),
+      b = make_entry(c(-4, -3, -2, -2, -1, -1, -0.5))
+    ),
+    catalog = data.frame(
+      id = c("a", "b"), run_id = c("run-positive", "run-negative"),
+      quality = c("good", "bad"), stringsAsFactors = FALSE
+    )
   )
-  result <- make_qc_overview_plot(data)
-  expect_s3_class(result$widget, "plotly")
-  expect_true(any(grepl("negative has no positive", result$warnings)))
-  built <- suppressMessages(plotly::plotly_build(result$widget))
-  normalized_positive <- Filter(function(trace) {
-    identical(trace$name, "positive") && any(abs(unlist(trace$y) - c(-.5, .5, 1)) < 1e-8)
-  }, built$x$data)
-  expect_true(length(normalized_positive) >= 1L)
-  expect_false(any(vapply(
-    built$x$data,
-    function(trace) identical(trace$name, "negative") && identical(trace$y, c(-.5, -.25, 0)),
-    logical(1)
-  )))
+}
+
+test_that("QC timeseries preparation retains raw A and entirely negative runs", {
+  fixture <- make_qc_timeseries_fixture()
+  prepared <- prepare_qc_timeseries_data(fixture$prepared, fixture$catalog)
+
+  expect_equal(prepared$run_ids, c("run-positive", "run-negative"))
+  expect_equal(nrow(prepared$raw), 14L)
+  expect_equal(range(prepared$raw$A_raw), c(-4, 4))
+  expect_equal(nrow(prepared$windows), 4L)
+  expect_equal(unique(as.character(prepared$windows$run_id)), prepared$run_ids)
+  expect_length(prepared$warnings, 0L)
+  expect_equal(qc_display_run_ids(prepared, FALSE), prepared$run_ids)
+  expect_equal(qc_display_run_ids(prepared, TRUE), "run-positive")
+  expect_match(prepared$normalization_warnings, "run-negative has no positive A maximum")
 })
 
-test_that("QC overview pairs each quality row with original left and normalized right", {
-  qualities <- c("good", "medium", "bad", "unassessed")
-  data <- do.call(rbind, lapply(seq_along(qualities), function(index) {
-    data.frame(
-      run_id = rep(paste0("run-", qualities[[index]]), 3),
-      PPFD_mean = c(0, 100, 500), PPFD_sd = 1,
-      A_mean = c(-index, index, 2 * index), A_sd = .1, A_slope = 0,
-      coverage = 1, window_complete = TRUE, quality = qualities[[index]],
-      species = "oak", plant_id = as.character(index), metadata_status = "Exact ID",
-      colour = rep(WALZ_DARK2[[index]], 3), stringsAsFactors = FALSE
-    )
+test_that("QC timeseries facets link run titles to the metadata sheet", {
+  fixture <- make_qc_timeseries_fixture()
+  prepared <- prepare_qc_timeseries_data(fixture$prepared, fixture$catalog)
+  widget <- make_qc_timeseries_plot(
+    prepared, columns = 2L, metadata_sheet_id = "sheet-test"
+  )
+  annotations <- widget$x$layout$annotations
+  linked <- Filter(function(annotation) {
+    isTRUE(annotation$captureevents) && grepl("<a href=", annotation$text, fixed = TRUE)
+  }, annotations)
+
+  expect_s3_class(widget, "plotly")
+  expect_length(linked, 2L)
+  expect_setequal(vapply(linked, `[[`, character(1), "name"), prepared$run_ids)
+  expect_true(all(vapply(linked, function(annotation) {
+    grepl("docs.google.com/spreadsheets/d/sheet-test/edit", annotation$text, fixed = TRUE)
+  }, logical(1))))
+  expect_true(all(c("plotly_click", "plotly_clickannotation") %in% widget$x$shinyEvents))
+
+  built <- suppressMessages(plotly::plotly_build(widget))
+  trace_keys <- unique(unlist(lapply(built$x$data, `[[`, "key")))
+  expect_setequal(as.character(trace_keys), prepared$run_ids)
+})
+
+test_that("QC normalization uses each run's positive maximum and defaults remain raw", {
+  fixture <- make_qc_timeseries_fixture()
+  prepared <- prepare_qc_timeseries_data(fixture$prepared, fixture$catalog)
+  normalized <- make_qc_timeseries_plot(
+    prepared, columns = 2L, normalized = TRUE, metadata_sheet_id = "sheet-test"
+  )
+  built <- suppressMessages(plotly::plotly_build(normalized))
+  trace_keys <- unique(unlist(lapply(built$x$data, `[[`, "key")))
+  normalized_values <- unlist(lapply(built$x$data, function(trace) {
+    if (is.null(trace$key)) numeric() else as.numeric(trace$y)
   }))
 
-  result <- make_qc_overview_plot(data)
-  built <- suppressMessages(plotly::plotly_build(result$widget))
-  annotations <- built$x$layout$annotations
-  annotation_text <- vapply(annotations, `[[`, character(1), "text")
-  annotation_x <- vapply(annotations, `[[`, numeric(1), "x")
-  annotation_y <- vapply(annotations, `[[`, numeric(1), "y")
+  expect_setequal(as.character(trace_keys), "run-positive")
+  expect_equal(max(normalized_values, na.rm = TRUE), 1)
+  expect_equal(qc_a_axis_label(TRUE), "A / positive run maximum")
+  expect_match(qc_a_axis_label(FALSE), "µmol m⁻² s⁻¹", fixed = TRUE)
+})
 
-  expect_equal(annotation_text, c(
-    "Good — original scale", "Good — normalized",
-    "Medium — original scale", "Medium — normalized",
-    "Bad — original scale", "Bad — normalized",
-    "Unassessed — original scale", "Unassessed — normalized"
-  ))
-  expect_equal(annotation_x, rep(c(0.23, 0.77), 4))
-  expect_equal(annotation_y, rep(c(1, 0.75, 0.5, 0.25), each = 2))
-
-  plotted_traces <- Filter(function(trace) !is.null(trace$name), built$x$data)
-  trace_maxima <- vapply(plotted_traces, function(trace) {
-    max(as.numeric(unlist(trace$y)), na.rm = TRUE)
-  }, numeric(1))
-  expect_equal(trace_maxima, as.vector(rbind(2 * seq_along(qualities), rep(1, 4))))
-  expect_equal(
-    vapply(plotted_traces, `[[`, character(1), "yaxis"),
-    c("y", paste0("y", 2:8))
-  )
+test_that("QC facet columns are bounded and determine section height", {
+  expect_equal(qc_facet_columns(NULL), 2L)
+  expect_equal(qc_facet_columns(0), 1L)
+  expect_equal(qc_facet_columns(5), 4L)
+  expect_equal(qc_timeseries_plot_height(8, 2), 1085L)
+  expect_lt(qc_timeseries_plot_height(8, 4), qc_timeseries_plot_height(8, 2))
 })
 
 test_that("QC manual selection preserves the requested run order", {

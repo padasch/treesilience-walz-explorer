@@ -545,6 +545,21 @@ body {
   margin-bottom: 1rem;
 }
 
+.qc-quality-section {
+  border-color: var(--walz-border);
+  margin-bottom: 1rem;
+}
+
+.qc-quality-section .annotation-text a {
+  color: #006d4c;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.qc-quality-section .annotation-text a:hover {
+  text-decoration: underline;
+}
+
 .walz-progress {
   background: #edf6f1;
   border: 1px solid #a9cdb8;

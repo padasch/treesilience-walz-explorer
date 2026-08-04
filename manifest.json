@@ -2703,7 +2703,7 @@
       "checksum": "b2580539fa9ada79570ee9b276145e76"
     },
     "R/quality_control.R": {
-      "checksum": "ed1c754337e68203fbaf73984f2c6a48"
+      "checksum": "0448afa8ca9564e1f7aff8153cb1a3cc"
     },
     "R/response_analysis.R": {
       "checksum": "3d4ee2eba79b48c373437b64d164adff"
@@ -2715,7 +2715,7 @@
       "checksum": "bd9e862c17cb85a91929b91396ecefb5"
     },
     "www/styles.css": {
-      "checksum": "079f65890d903016582eff62c6c4d746"
+      "checksum": "38d92b0b0a61195a783ca26729ecb14b"
     }
   },
   "users": null

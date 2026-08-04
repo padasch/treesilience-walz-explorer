@@ -28,10 +28,10 @@ No WALZ measurements, Google credentials, or thesis files are stored in this rep
 ### Quality Control
 
 - Four quality sections: Good, Medium, Bad, and Unassessed
-- Each quality occupies one row, with original `A` versus measured `PARtop` on the left and `A / positive run maximum` on the right; negative A remains negative, and non-positive runs are omitted from normalization with a warning
-- Exactly one color and trace per run, using stable colors across tabs and quality changes
-- Final-three-minute means for every stable light step, including the terminal step
-- A click-selectable raw audit whose selector always includes every measurement CSV independently of the overview filters; unmatched metadata rows are flagged without hiding the raw data
+- A faceted A-timeseries overview for each quality, with a one-to-four-column layout control and an optional per-run positive-maximum normalization switch
+- Raw A is the default so entirely negative or otherwise unusual runs remain visible; normalized mode omits runs without a positive maximum with an explicit warning. Pale bands mark the final-three-minute extraction windows, thick segments mark their means, and error bars show mean ± 1 SD
+- Clickable run-ID facet titles open the read-only metadata Sheet for manual quality editing, while clicking a timeseries selects its detailed raw audit
+- A raw audit whose selector always includes every measurement CSV independently of the overview filters; unmatched metadata rows are flagged without hiding the raw data
 - Raw A and PPFD audits with pale extraction windows, thick three-minute mean segments, and lighter mean ± 1 SD bars, plus slope, coverage, completeness, and structural warnings
 - Switchable metadata filters or manual multi-run selection, plus a color-matched metadata table
 - Read-only quality overview; assessments are edited manually in the linked metadata Sheet

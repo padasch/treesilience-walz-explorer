@@ -97,149 +97,252 @@ filter_run_catalog <- function(
   catalog[keep, , drop = FALSE]
 }
 
-prepared_step_table <- function(prepared, catalog) {
-  if (length(prepared) == 0L || is.null(catalog) || nrow(catalog) == 0L) {
-    return(data.frame())
-  }
-  tables <- lapply(seq_len(nrow(catalog)), function(index) {
-    entry <- prepared[[catalog$id[[index]]]]
-    if (is.null(entry) || !is.null(entry$error) || nrow(entry$extraction$summary) == 0L) {
-      return(NULL)
-    }
-    summary <- entry$extraction$summary
-    summary$id <- catalog$id[[index]]
-    summary$name <- catalog$name[[index]]
-    summary$quality <- catalog$quality[[index]]
-    summary$species <- catalog$species[[index]]
-    summary$plant_id <- catalog$plant_id[[index]]
-    summary$metadata_status <- catalog$metadata_status[[index]]
-    summary$colour <- catalog$colour[[index]]
-    summary
-  })
-  tables <- Filter(Negate(is.null), tables)
-  if (length(tables) == 0L) data.frame() else do.call(rbind, tables)
-}
-
-qc_trace_hover <- function(data) {
-  sprintf(
-    paste0(
-      "<b>%s</b><br>Species: %s<br>Plant: %s<br>",
-      "PPFD: %.1f ± %.1f<br>A: %.3f ± %.3f<br>",
-      "A drift: %.4f min⁻¹<br>Coverage: %.0f%%<br>%s"
+qc_empty_timeseries_data <- function() {
+  list(
+    raw = data.frame(
+      run_id = character(), elapsed_minutes = numeric(), A_raw = numeric(),
+      A_normalized = numeric(), hover = character(), stringsAsFactors = FALSE
     ),
-    data$run_id, ifelse(nzchar(data$species), data$species, "—"),
-    ifelse(nzchar(data$plant_id), data$plant_id, "—"),
-    data$PPFD_mean, data$PPFD_sd, data$A_mean, data$A_sd,
-    data$A_slope, 100 * data$coverage, data$metadata_status
+    windows = data.frame(
+      run_id = character(), step_id = integer(), window_start = numeric(),
+      window_end = numeric(), window_midpoint = numeric(), A_mean = numeric(),
+      A_sd = numeric(), A_mean_normalized = numeric(), A_sd_normalized = numeric(),
+      PPFD_mean = numeric(), coverage = numeric(),
+      stringsAsFactors = FALSE
+    ),
+    warnings = character(), normalization_warnings = character(),
+    run_ids = character()
   )
 }
 
-qc_overview_annotation_titles <- function() {
-  quality_labels <- c("Good", "Medium", "Bad", "Unassessed")
-  as.vector(rbind(
-    paste(quality_labels, "— original scale"),
-    paste(quality_labels, "— normalized")
-  ))
+prepare_qc_timeseries_data <- function(prepared, catalog) {
+  empty <- qc_empty_timeseries_data()
+  if (length(prepared) == 0L || is.null(catalog) || nrow(catalog) == 0L) {
+    return(empty)
+  }
+
+  raw_rows <- list()
+  window_rows <- list()
+  warnings <- character()
+  normalization_warnings <- character()
+  run_ids <- character()
+  for (index in seq_len(nrow(catalog))) {
+    run_id <- as.character(catalog$run_id[[index]])
+    entry <- prepared[[catalog$id[[index]]]]
+    if (is.null(entry) || !is.null(entry$error) || is.null(entry$extraction)) next
+    raw <- entry$extraction$raw
+    summary <- entry$extraction$summary
+    if (
+      is.null(raw) || nrow(raw) == 0L ||
+        !all(c("Datetime", ".elapsed_minutes", "A") %in% names(raw))
+    ) {
+      warnings <- c(warnings, sprintf("%s has no usable raw A timeseries.", run_id))
+      next
+    }
+
+    elapsed <- suppressWarnings(as.numeric(raw$.elapsed_minutes))
+    assimilation <- suppressWarnings(as.numeric(raw$A))
+    keep <- is.finite(elapsed) & is.finite(assimilation)
+    if (!any(keep)) {
+      warnings <- c(warnings, sprintf("%s has no finite A observations.", run_id))
+      next
+    }
+    positive_values <- assimilation[keep & assimilation > 0]
+    positive_max <- if (length(positive_values)) max(positive_values) else NA_real_
+    if (!is.finite(positive_max) || positive_max <= 0) {
+      normalization_warnings <- c(normalization_warnings, sprintf(
+        "%s has no positive A maximum and is omitted from normalized view.", run_id
+      ))
+    }
+    run_ids <- c(run_ids, run_id)
+    raw_rows[[run_id]] <- data.frame(
+      run_id = run_id,
+      elapsed_minutes = elapsed[keep],
+      A_raw = assimilation[keep],
+      A_normalized = assimilation[keep] / positive_max,
+      hover = sprintf(
+        "<b>%s</b><br>Elapsed time: %.2f min<br>A: %.3f µmol m⁻² s⁻¹",
+        run_id, elapsed[keep], assimilation[keep]
+      ),
+      stringsAsFactors = FALSE
+    )
+
+    if (is.null(summary) || nrow(summary) == 0L) next
+    start_time <- suppressWarnings(min(raw$Datetime, na.rm = TRUE))
+    if (!is.finite(as.numeric(start_time))) next
+    window_start <- as.numeric(difftime(summary$window_start, start_time, units = "mins"))
+    window_end <- as.numeric(difftime(summary$window_end, start_time, units = "mins"))
+    window_rows[[run_id]] <- data.frame(
+      run_id = run_id,
+      step_id = summary$step_id,
+      window_start = window_start,
+      window_end = window_end,
+      window_midpoint = (window_start + window_end) / 2,
+      A_mean = summary$A_mean,
+      A_sd = summary$A_sd,
+      A_mean_normalized = summary$A_mean / positive_max,
+      A_sd_normalized = summary$A_sd / positive_max,
+      PPFD_mean = summary$PPFD_mean,
+      coverage = summary$coverage,
+      stringsAsFactors = FALSE
+    )
+  }
+
+  if (length(raw_rows) == 0L) {
+    empty$warnings <- unique(warnings)
+    empty$normalization_warnings <- unique(normalization_warnings)
+    return(empty)
+  }
+  raw_data <- do.call(rbind, raw_rows)
+  window_data <- if (length(window_rows)) do.call(rbind, window_rows) else empty$windows
+  raw_data$run_id <- factor(raw_data$run_id, levels = run_ids)
+  if (nrow(window_data) > 0L) {
+    window_data$run_id <- factor(window_data$run_id, levels = run_ids)
+  }
+  list(
+    raw = raw_data, windows = window_data,
+    warnings = unique(warnings),
+    normalization_warnings = unique(normalization_warnings),
+    run_ids = run_ids
+  )
 }
 
-make_qc_overview_plot <- function(step_data) {
-  groups <- c("good", "medium", "bad", "unassessed")
-  if (is.null(step_data) || nrow(step_data) == 0L) {
-    return(list(
-      widget = plotly::event_register(
-        plotly::plot_ly(source = "qc_overview", type = "scatter", mode = "lines"),
-        "plotly_click"
-      ),
-      warnings = character()
-    ))
-  }
-  complete <- step_data[step_data$window_complete, , drop = FALSE]
-  if (nrow(complete) == 0L) {
-    return(list(
-      widget = plotly::event_register(
-        plotly::plot_ly(source = "qc_overview", type = "scatter", mode = "lines"),
-        "plotly_click"
-      ),
-      warnings = "No complete extraction windows are available."
-    ))
-  }
-  x_range <- range(c(0, complete$PPFD_mean), finite = TRUE)
-  raw_range <- range(complete$A_mean, finite = TRUE)
-  raw_padding <- max(0.1, diff(raw_range) * 0.05)
-  raw_range <- raw_range + c(-raw_padding, raw_padding)
-  normalized_values <- numeric()
-  warnings <- character()
-  panels <- list()
+qc_display_run_ids <- function(prepared, normalized = FALSE) {
+  if (is.null(prepared) || nrow(prepared$raw) == 0L) return(character())
+  if (!isTRUE(normalized)) return(prepared$run_ids)
+  unique(as.character(prepared$raw$run_id[is.finite(prepared$raw$A_normalized)]))
+}
 
-  for (quality in groups) {
-    group_data <- complete[complete$quality == quality, , drop = FALSE]
-    raw_panel <- plotly::plot_ly(source = "qc_overview", type = "scatter", mode = "lines")
-    normalized_panel <- plotly::plot_ly(source = "qc_overview", type = "scatter", mode = "lines")
-    for (run in unique(group_data$run_id)) {
-      run_data <- group_data[group_data$run_id == run, , drop = FALSE]
-      run_data <- run_data[order(run_data$PPFD_mean), , drop = FALSE]
-      colour <- run_data$colour[[1]]
-      hover <- qc_trace_hover(run_data)
-      raw_panel <- plotly::add_trace(
-        raw_panel, x = run_data$PPFD_mean, y = run_data$A_mean,
-        type = "scatter", mode = "lines+markers", name = run,
-        line = list(color = colour, width = 1.7),
-        marker = list(color = colour, size = 5),
-        customdata = rep(run, nrow(run_data)), text = hover,
-        hovertemplate = "%{text}<extra></extra>", showlegend = FALSE
+qc_a_axis_label <- function(normalized = FALSE) {
+  if (isTRUE(normalized)) {
+    "A / positive run maximum"
+  } else {
+    "Net CO₂ assimilation, A [µmol m⁻² s⁻¹]"
+  }
+}
+
+qc_facet_columns <- function(value) {
+  value <- suppressWarnings(as.integer(value))
+  if (length(value) == 0L || is.na(value)) return(2L)
+  max(1L, min(4L, value[[1]]))
+}
+
+qc_timeseries_plot_height <- function(run_count, columns) {
+  rows <- ceiling(max(1L, as.integer(run_count)) / qc_facet_columns(columns))
+  max(380L, 245L * rows + 105L)
+}
+
+qc_metadata_sheet_url <- function(sheet_id) {
+  sprintf("https://docs.google.com/spreadsheets/d/%s/edit", sheet_id)
+}
+
+make_qc_timeseries_plot <- function(
+    prepared,
+    columns = 2L,
+    normalized = FALSE,
+    metadata_sheet_id = WALZ_DEFAULT_METADATA_SHEET_ID) {
+  if (is.null(prepared) || nrow(prepared$raw) == 0L) {
+    return(plotly::plotly_empty(type = "scatter", mode = "lines"))
+  }
+  columns <- qc_facet_columns(columns)
+  mean_colour <- WALZ_DARK2[[1]]
+  display_runs <- qc_display_run_ids(prepared, normalized)
+  if (length(display_runs) == 0L) {
+    return(plotly::plotly_empty(type = "scatter", mode = "lines"))
+  }
+  raw_data <- prepared$raw[as.character(prepared$raw$run_id) %in% display_runs, , drop = FALSE]
+  window_data <- prepared$windows[
+    as.character(prepared$windows$run_id) %in% display_runs, , drop = FALSE
+  ]
+  raw_data$A_display <- if (isTRUE(normalized)) raw_data$A_normalized else raw_data$A_raw
+  window_data$A_display <- if (isTRUE(normalized)) {
+    window_data$A_mean_normalized
+  } else window_data$A_mean
+  window_data$A_sd_display <- if (isTRUE(normalized)) {
+    window_data$A_sd_normalized
+  } else window_data$A_sd
+  y_label <- qc_a_axis_label(normalized)
+  raw_line_layer <- suppressWarnings(ggplot2::geom_line(
+    ggplot2::aes(text = hover, key = run_id),
+    colour = "#56616b", linewidth = 0.38, na.rm = TRUE
+  ))
+  plot <- ggplot2::ggplot(
+    raw_data,
+    ggplot2::aes(x = elapsed_minutes, y = A_display, group = run_id)
+  ) +
+    ggplot2::geom_hline(yintercept = 0, colour = "#a8b0aa", linewidth = 0.3) +
+    ggplot2::geom_rect(
+      data = window_data,
+      ggplot2::aes(
+        xmin = window_start, xmax = window_end,
+        ymin = -Inf, ymax = Inf
+      ),
+      inherit.aes = FALSE, fill = mean_colour, alpha = 0.055
+    ) +
+    raw_line_layer +
+    ggplot2::geom_segment(
+      data = window_data,
+      ggplot2::aes(
+        x = window_start, xend = window_end,
+        y = A_display, yend = A_display
+      ),
+      inherit.aes = FALSE, colour = mean_colour, linewidth = 1.7,
+      lineend = "round", na.rm = TRUE
+    ) +
+    ggplot2::geom_errorbar(
+      data = window_data,
+      ggplot2::aes(
+        x = window_midpoint,
+        ymin = A_display - A_sd_display,
+        ymax = A_display + A_sd_display
+      ),
+      inherit.aes = FALSE, colour = mean_colour, alpha = 0.58,
+      linewidth = 0.55, width = 0.5, na.rm = TRUE
+    ) +
+    ggplot2::facet_wrap(
+      stats::as.formula("~run_id"), ncol = columns, scales = "free_x"
+    ) +
+    ggplot2::labs(
+      x = "Elapsed time from run start (minutes)",
+      y = y_label
+    ) +
+    ggplot2::theme_minimal(base_size = 11) +
+    ggplot2::theme(
+      legend.position = "none",
+      panel.grid.minor = ggplot2::element_blank(),
+      panel.grid.major = ggplot2::element_line(colour = "#e7ebe7", linewidth = 0.3),
+      strip.background = ggplot2::element_rect(fill = "#eef4ed", colour = NA),
+      strip.text = ggplot2::element_text(colour = "#006d4c", face = "bold"),
+      axis.title = ggplot2::element_text(colour = "#34443a"),
+      axis.text = ggplot2::element_text(colour = "#4b5563")
+    )
+
+  widget <- suppressWarnings(plotly::ggplotly(
+    plot, dynamicTicks = TRUE, tooltip = "text", source = "qc_overview"
+  ))
+  sheet_url <- qc_metadata_sheet_url(metadata_sheet_id)
+  annotations <- widget$x$layout$annotations
+  if (length(annotations)) {
+    for (index in seq_along(annotations)) {
+      label <- as.character(annotations[[index]]$text)
+      if (!label %in% display_runs) next
+      annotations[[index]]$text <- sprintf(
+        "<a href=\"%s\" target=\"_blank\">%s ↗</a>",
+        sheet_url, htmltools::htmlEscape(label)
       )
-      positive_max <- suppressWarnings(max(run_data$A_mean[run_data$A_mean > 0], na.rm = TRUE))
-      if (!is.finite(positive_max) || positive_max <= 0) {
-        warnings <- c(warnings, sprintf(
-          "%s has no positive A maximum and is omitted from normalized panels.", run
-        ))
-      } else {
-        normalized <- run_data$A_mean / positive_max
-        normalized_values <- c(normalized_values, normalized)
-        normalized_panel <- plotly::add_trace(
-          normalized_panel, x = run_data$PPFD_mean, y = normalized,
-          type = "scatter", mode = "lines+markers", name = run,
-          line = list(color = colour, width = 1.7),
-          marker = list(color = colour, size = 5),
-          customdata = rep(run, nrow(run_data)), text = hover,
-          hovertemplate = paste0(
-            "%{text}<br>Normalized A: %{y:.3f}<extra></extra>"
-          ), showlegend = FALSE
-        )
-      }
+      annotations[[index]]$name <- label
+      annotations[[index]]$captureevents <- TRUE
+      annotations[[index]]$hovertext <- "Open the metadata sheet to review this run"
+      annotations[[index]]$font$color <- "#006d4c"
     }
-    raw_panel <- plotly::layout(
-      raw_panel,
-      xaxis = list(range = x_range, title = "Measured PPFD"),
-      yaxis = list(range = raw_range, title = "A")
-    )
-    normalized_panel <- plotly::layout(
-      normalized_panel,
-      xaxis = list(range = x_range, title = "Measured PPFD"),
-      yaxis = list(title = "A / positive run maximum")
-    )
-    panels <- c(panels, list(raw_panel, normalized_panel))
+    widget$x$layout$annotations <- annotations
   }
-
-  widget <- do.call(plotly::subplot, c(
-    panels,
-    list(nrows = 4L, margin = 0.055, shareX = TRUE, titleX = TRUE, titleY = TRUE)
-  ))
-  titles <- qc_overview_annotation_titles()
-  title_y <- rep(c(1, 0.75, 0.50, 0.25), each = 2L)
-  title_x <- rep(c(0.23, 0.77), times = 4L)
-  annotations <- lapply(seq_along(titles), function(index) list(
-    text = titles[[index]], x = title_x[[index]], y = title_y[[index]],
-    xref = "paper", yref = "paper", xanchor = "center", yanchor = "bottom",
-    showarrow = FALSE, font = list(size = 13, color = "#33423a")
-  ))
   widget <- plotly::layout(
-    widget, showlegend = FALSE, hovermode = "closest",
-    margin = list(l = 70, r = 25, t = 55, b = 55),
-    annotations = annotations
+    widget, hovermode = "closest", showlegend = FALSE,
+    margin = list(l = 90, r = 25, t = 35, b = 70)
   )
   widget <- plotly::event_register(widget, "plotly_click")
-  list(widget = widget, warnings = unique(warnings))
+  plotly::event_register(widget, "plotly_clickannotation")
 }
 
 make_qc_audit_plot <- function(entry) {
@@ -453,7 +556,7 @@ qc_sidebar_ui <- function(id) {
       shiny::dateRangeInput(ns("date_range"), "Run date"),
       shiny::p(
         class = "control-help",
-        "All four quality panels stay in place; these filters control which runs are compared."
+        "All four quality sections stay in place; these filters control which runs are compared."
       )
     ),
     shiny::conditionalPanel(
@@ -471,6 +574,22 @@ qc_sidebar_ui <- function(id) {
         class = "control-help",
         "Add any set of runs to compare. The menu stays open while you select multiple runs."
       )
+    ),
+    shiny::sliderInput(
+      ns("facet_columns"), "Timeseries columns",
+      min = 1L, max = 4L, value = 2L, step = 1L
+    ),
+    shiny::p(
+      class = "control-help",
+      "Choose how many run panels are shown per row in each quality section."
+    ),
+    bslib::input_switch(
+      ns("normalize_a"), "Normalize A by each run's positive maximum",
+      value = FALSE
+    ),
+    shiny::p(
+      class = "control-help",
+      "Off by default: raw A values and units are shown."
     ),
     shiny::p(
       class = "control-help",
@@ -493,11 +612,20 @@ qc_main_ui <- function(id) {
     class = "quality-control-tab",
     shiny::uiOutput(ns("progress")),
     bslib::card(
-      bslib::card_header("A versus measured PPFD by quality assessment"),
-      shiny::p(class = "control-help", "Each curve uses the final-three-minute means of its stable light steps. Click a curve to open its raw audit."),
-      shiny::uiOutput(ns("overview_warnings")),
-      plotly::plotlyOutput(ns("overview"), height = "1700px")
+      bslib::card_header("A over elapsed time by quality assessment"),
+      shiny::p(
+        class = "control-help",
+        paste0(
+          "Each facet is one measurement run. The sidebar scale switch defaults to original A ",
+          "and can divide each run by its positive maximum. Pale bands mark the ",
+          "three-minute extraction windows; thick green segments show their means and the ",
+          "lighter vertical bars show mean ± 1 SD. Click a line to open its detailed audit, ",
+          "or click a run-ID title to open the metadata Sheet."
+        )
+      ),
+      shiny::uiOutput(ns("overview_warnings"))
     ),
+    shiny::uiOutput(ns("overview_sections")),
     bslib::card(
       bslib::card_header("Selected-run extraction audit"),
       shiny::uiOutput(ns("audit_heading")),
@@ -669,12 +797,78 @@ quality_control_server <- function(
       alert_ui(sprintf("%d runs prepared and cached for this process.", state$done), "info")
     })
 
-    step_data <- shiny::reactive(prepared_step_table(prepared(), scoped_catalog()))
-    overview_result <- shiny::reactive(make_qc_overview_plot(step_data()))
+    quality_levels <- c("good", "medium", "bad", "unassessed")
+    quality_labels <- c(
+      good = "Good", medium = "Medium", bad = "Bad", unassessed = "Unassessed"
+    )
+    quality_data <- shiny::reactive({
+      current <- scoped_catalog()
+      stats::setNames(lapply(quality_levels, function(quality) {
+        prepare_qc_timeseries_data(
+          prepared(), current[current$quality == quality, , drop = FALSE]
+        )
+      }), quality_levels)
+    })
 
-    output$overview <- plotly::renderPlotly(overview_result()$widget)
+    for (quality in quality_levels) {
+      local({
+        current_quality <- quality
+        output[[paste0("overview_", current_quality)]] <- plotly::renderPlotly({
+          current <- quality_data()[[current_quality]]
+          shiny::req(nrow(current$raw) > 0L)
+          make_qc_timeseries_plot(
+            current,
+            columns = qc_facet_columns(input$facet_columns),
+            normalized = isTRUE(input$normalize_a),
+            metadata_sheet_id = config$metadata_sheet_id
+          )
+        })
+      })
+    }
+
+    output$overview_sections <- shiny::renderUI({
+      current_catalog <- scoped_catalog()
+      current_data <- quality_data()
+      columns <- qc_facet_columns(input$facet_columns)
+      shiny::tagList(lapply(quality_levels, function(quality) {
+        catalog_count <- sum(current_catalog$quality == quality)
+        prepared_count <- length(current_data[[quality]]$run_ids)
+        display_count <- length(qc_display_run_ids(
+          current_data[[quality]], isTRUE(input$normalize_a)
+        ))
+        header <- sprintf("%s (%d run%s)",
+          quality_labels[[quality]], catalog_count,
+          if (catalog_count == 1L) "" else "s"
+        )
+        content <- if (catalog_count == 0L) {
+          alert_ui("No runs in the current selection.", "info")
+        } else if (prepared_count == 0L) {
+          alert_ui("These runs are still being prepared or could not be parsed.", "info")
+        } else if (display_count == 0L) {
+          alert_ui("No run in this section has a positive A maximum for normalization.", "warning")
+        } else {
+          plotly::plotlyOutput(
+            session$ns(paste0("overview_", quality)),
+            height = sprintf(
+              "%dpx", qc_timeseries_plot_height(display_count, columns)
+            )
+          )
+        }
+        bslib::card(
+          class = paste("qc-quality-section", paste0("qc-quality-", quality)),
+          bslib::card_header(header),
+          content
+        )
+      }))
+    })
+
     output$overview_warnings <- shiny::renderUI({
-      warnings <- overview_result()$warnings
+      warnings <- unique(unlist(lapply(quality_data(), `[[`, "warnings")))
+      if (isTRUE(input$normalize_a)) {
+        warnings <- c(warnings, unlist(lapply(
+          quality_data(), `[[`, "normalization_warnings"
+        )))
+      }
       failures <- Filter(function(entry) !is.null(entry$error), prepared())
       if (length(failures) > 0L) {
         failure_labels <- vapply(failures, function(entry) {
@@ -715,7 +909,26 @@ quality_control_server <- function(
     })
     shiny::observeEvent(qc_click(), {
       clicked <- qc_click()
-      run_id <- as.character(clicked$customdata[[1]])
+      run_id <- if ("key" %in% names(clicked)) {
+        as.character(clicked$key[[1]])
+      } else if ("customdata" %in% names(clicked)) {
+        as.character(clicked$customdata[[1]])
+      } else ""
+      if (nzchar(run_id)) {
+        selected_run_id(run_id)
+        shiny::updateSelectizeInput(session, "selected_run", selected = run_id)
+      }
+    }, ignoreInit = TRUE)
+
+    qc_annotation_click <- shiny::reactive({
+      shiny::req(active())
+      suppressWarnings(plotly::event_data(
+        "plotly_clickannotation", source = "qc_overview"
+      ))
+    })
+    shiny::observeEvent(qc_annotation_click(), {
+      clicked <- qc_annotation_click()
+      run_id <- if ("name" %in% names(clicked)) as.character(clicked$name[[1]]) else ""
       if (nzchar(run_id)) {
         selected_run_id(run_id)
         shiny::updateSelectizeInput(session, "selected_run", selected = run_id)
