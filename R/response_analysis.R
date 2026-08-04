@@ -530,6 +530,7 @@ make_surface_response_3d <- function(model_result) {
   data <- model_result$data
   plot <- plotly::add_markers(
     plot, x = data$Tleaf_mean, y = data$PPFD_mean, z = data$A_mean,
+    inherit = FALSE,
     marker = list(color = "white", size = 3, line = list(color = "#263238", width = 1)),
     text = data$run_id, name = "Observed steps",
     hovertemplate = "%{text}<br>Tleaf %{x:.2f}<br>PPFD %{y:.1f}<br>A %{z:.3f}<extra></extra>"

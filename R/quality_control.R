@@ -140,7 +140,7 @@ make_qc_overview_plot <- function(step_data) {
   if (is.null(step_data) || nrow(step_data) == 0L) {
     return(list(
       widget = plotly::event_register(
-        plotly::plotly_empty(type = "scatter", mode = "lines"),
+        plotly::plot_ly(source = "qc_overview", type = "scatter", mode = "lines"),
         "plotly_click"
       ),
       warnings = character()
@@ -150,7 +150,7 @@ make_qc_overview_plot <- function(step_data) {
   if (nrow(complete) == 0L) {
     return(list(
       widget = plotly::event_register(
-        plotly::plotly_empty(type = "scatter", mode = "lines"),
+        plotly::plot_ly(source = "qc_overview", type = "scatter", mode = "lines"),
         "plotly_click"
       ),
       warnings = "No complete extraction windows are available."
@@ -466,6 +466,7 @@ quality_control_server <- function(
     started <- shiny::reactiveVal(FALSE)
     manual_choice_signature <- shiny::reactiveVal(character())
     selected_run_choice_values <- shiny::reactiveVal(character())
+    selected_run_id <- shiny::reactiveVal("")
     selected_entry_state <- shiny::reactiveVal(list(id = "", value = NULL))
     catalog <- shiny::reactive(build_run_catalog(measurements(), metadata()))
 
@@ -639,6 +640,8 @@ quality_control_server <- function(
       state <- qc_selected_run_control_state(
         current, input$selected_run, selected_run_choice_values()
       )
+      desired_run <- if (length(state$selected) > 0L) state$selected[[1]] else ""
+      if (!identical(selected_run_id(), desired_run)) selected_run_id(desired_run)
       if (!isTRUE(state$update)) return()
       shiny::updateSelectizeInput(
         session, "selected_run", choices = state$choices,
@@ -654,12 +657,15 @@ quality_control_server <- function(
     shiny::observeEvent(qc_click(), {
       clicked <- qc_click()
       run_id <- as.character(clicked$customdata[[1]])
-      if (nzchar(run_id)) shiny::updateSelectizeInput(session, "selected_run", selected = run_id)
+      if (nzchar(run_id)) {
+        selected_run_id(run_id)
+        shiny::updateSelectizeInput(session, "selected_run", selected = run_id)
+      }
     }, ignoreInit = TRUE)
 
     selected_catalog <- shiny::reactive({
       current <- scoped_catalog()
-      selected_run <- input$selected_run
+      selected_run <- selected_run_id()
       if (is.null(selected_run) || !nzchar(selected_run)) {
         selected_run <- if (nrow(current) > 0L) current$run_id[[1]] else ""
       }
