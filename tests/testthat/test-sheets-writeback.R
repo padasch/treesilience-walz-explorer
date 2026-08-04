@@ -16,6 +16,11 @@ fake_sheet_client <- function(initial) {
   )
 }
 
+test_that("Sheet write-back only requires the service-account credential", {
+  expect_true(sheet_writeback_configured(list(service_account_json_b64 = "configured")))
+  expect_false(sheet_writeback_configured(list(service_account_json_b64 = "")))
+})
+
 test_that("quality write-back changes exactly one quality cell and verifies it", {
   fake <- fake_sheet_client(data.frame(
     timestamp = c("run-a", "run-b"),

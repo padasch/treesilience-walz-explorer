@@ -46,3 +46,48 @@ test_that("insufficient data retain raw workflow but suppress modeling", {
   expect_equal(result$status, "insufficient")
   expect_match(result$message, "suppressed")
 })
+
+test_that("local-analysis presets resolve exact Drive runs and report missing files", {
+  catalog <- data.frame(
+    id = paste0("id-", seq_along(WALZ_CURATED_OAK_RUNS)),
+    run_id = WALZ_CURATED_OAK_RUNS,
+    species = "oak", plant_id = "oak-1", quality = "unassessed",
+    stringsAsFactors = FALSE
+  )
+  resolved <- resolve_response_preset("curated_oak", catalog)
+  expect_equal(resolved$matched, WALZ_CURATED_OAK_RUNS)
+  expect_length(resolved$ids, 10L)
+  expect_length(resolved$missing, 0L)
+
+  partial <- resolve_response_preset("curated_all", catalog)
+  expect_length(partial$ids, 10L)
+  expect_length(partial$missing, 11L)
+})
+
+test_that("manual response selection keeps user order and can include unmatched runs", {
+  catalog <- data.frame(
+    id = c("a", "b", "c"), run_id = c("run-a", "run-b", "run-c"),
+    species = c("oak", "", "beech"), plant_id = c("1", "", "2"),
+    quality = c("good", "unassessed", "bad"), metadata_matches = c(1L, 0L, 1L),
+    stringsAsFactors = FALSE
+  )
+  selected <- manual_response_catalog(catalog, c("b", "a"))
+  expect_equal(selected$id, c("b", "a"))
+  choices <- response_run_choices(catalog)
+  expect_equal(unname(choices), catalog$id)
+  expect_true(any(grepl("species unavailable", names(choices), fixed = TRUE)))
+})
+
+test_that("response line plots expose continuous color legends", {
+  steps <- make_response_steps()
+  observed <- suppressMessages(plotly::plotly_build(make_observed_response_plot(steps)))
+  expect_true(isTRUE(observed$x$data[[1]]$marker$showscale))
+  expect_equal(observed$x$data[[1]]$marker$colorbar$title$text, "Mean Tleaf (°C)")
+  expect_true(all(vapply(observed$x$data, function(trace) !isTRUE(trace$showlegend), logical(1))))
+
+  model <- fit_response_gam(steps, grid_size = 30L)
+  model$supported <- TRUE
+  slices <- suppressMessages(plotly::plotly_build(make_temperature_slice_plot(model)))
+  expect_true(isTRUE(slices$x$data[[1]]$marker$showscale))
+  expect_equal(slices$x$data[[1]]$marker$colorbar$title$text, "Measured PPFD")
+})

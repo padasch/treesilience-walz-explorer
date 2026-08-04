@@ -69,23 +69,25 @@ The app uses `googledrive::drive_deauth()` for non-interactive access to files t
 - `WALZ_METADATA_SHEET_NAME`: replace the default `Walz Measurement Metadata` tab name
 - `WALZ_ENABLE_DEW_POINT_TAB`: set to `true` only for development review of the disabled calculator
 - `WALZ_BACKGROUND_WORKERS`: background worker count, with a minimum and default of two
-- `WALZ_REVIEW_ACCESS_CODE`: shared code that unlocks quality write-back for a browser session
 - `WALZ_GOOGLE_SERVICE_ACCOUNT_JSON_B64`: base64-encoded Google service-account JSON for Sheet write-back
 
 Drive listings and public metadata are cached process-wide for 60 seconds. Downloaded measurement and protocol content is cached by Drive file ID and `modifiedTime`; extracted light-step summaries also include extraction settings in their cache key. The Explorer lists measurements first, loads metadata after the first plot, and does not list protocols until the protocol accordion is opened. QC and analysis collections load only on first use in sequential batches of about 12, with concurrent transfers inside each batch and per-file fallback through `googledrive`. “Refresh and show latest” forces the measurement and metadata sources to refresh, while protocol refresh remains deferred unless protocols have already been opened. Data updates do not require a code deployment.
 
 ## Quality write-back setup
 
-The public app remains fully usable for read-only review when write-back secrets are absent. To enable the four quality actions, configure both encrypted environment variables in Posit Connect Cloud:
+The public app remains fully usable for read-only review when write-back credentials are absent. To enable the four quality actions, configure this encrypted environment variable in Posit Connect Cloud:
 
-1. `WALZ_REVIEW_ACCESS_CODE`: a shared reviewer code. It gates the buttons but is not a substitute for private app access.
-2. `WALZ_GOOGLE_SERVICE_ACCOUNT_JSON_B64`: service-account credentials encoded as base64. Share the metadata Sheet with that service-account email as an editor.
+1. `WALZ_GOOGLE_SERVICE_ACCOUNT_JSON_B64`: service-account credentials encoded as base64. Share the metadata Sheet with that service-account email as an editor.
+
+There is currently no reviewer-code gate: when the service-account secret is configured, anyone using the public app can change the quality assessment. The server credentials remain hidden and only the single quality cell is writable through the app.
 
 Before every change, the server re-reads the timestamp and quality columns, requires exactly one exact timestamp match, checks that the loaded quality value has not changed, writes one cell, and verifies the returned value. Automated tests use a fake Sheet client and never write to the production spreadsheet.
 
 ## Response model
 
 The exploratory species-level model is `A_mean ~ te(Tleaf_mean, log1p(PPFD_mean))`, fitted by REML with smoothing selection. Fitting requires at least four distinct runs, four measured light levels, and 16 complete extraction windows. Predictions outside the linear-interpolation support are masked. Surface and optimum claims are suppressed when leave-one-run-out prediction, GAM basis checks, or boundary-optimum prevalence indicate inadequate support.
+
+Response Analysis supports two selection modes. Metadata filters retain the Good-only default; manual selection can include any available files, including runs without a metadata match. Its presets reproduce the explicit local response-landscape curation: ten oak temperature runs, ten beech temperature runs, their combined series, the single Prunus pilot, and the full 21-run set. The observed and modeled line charts use continuous color bars for mean leaf temperature and measured PPFD, respectively. Run identity colors elsewhere in the application use the Dark2 palette consistently.
 
 ## Protocol matching
 

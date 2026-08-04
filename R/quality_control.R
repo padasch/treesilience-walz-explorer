@@ -247,7 +247,7 @@ make_qc_audit_plot <- function(entry) {
     a_panel,
     x = as.numeric(difftime(summary$window_end, min(raw$Datetime), units = "mins")),
     y = summary$A_mean, name = "Extracted A mean",
-    marker = list(color = "#28754d", size = 8),
+    marker = list(color = WALZ_DARK2[[1]], size = 8),
     text = sprintf(
       "Step %d<br>SD %.3f<br>Slope %.4f/min<br>Coverage %.0f%%<br>%s",
       summary$step_id, summary$A_sd, summary$A_slope,
@@ -365,8 +365,6 @@ quality_control_server <- function(
     prepared <- shiny::reactiveVal(list())
     progress <- shiny::reactiveVal(list(done = 0L, total = 0L, loading = FALSE, error = NULL))
     started <- shiny::reactiveVal(FALSE)
-    reviewer_unlocked <- shiny::reactiveVal(FALSE)
-
     catalog <- shiny::reactive(build_run_catalog(measurements(), metadata()))
 
     shiny::observe({
@@ -595,14 +593,8 @@ quality_control_server <- function(
     output$review_controls <- shiny::renderUI({
       if (!sheet_writeback_configured(config)) {
         return(shiny::tagList(
-          alert_ui("Quality review is read-only because reviewer secrets are not configured.", "info"),
+          alert_ui("Quality review is read-only because the Google service-account secret is not configured.", "info"),
           metadata_sheet_link_ui("drive-link")
-        ))
-      }
-      if (!reviewer_unlocked()) {
-        return(shiny::tagList(
-          shiny::passwordInput(session$ns("access_code"), "Reviewer access code"),
-          shiny::actionButton(session$ns("unlock"), "Unlock quality review")
         ))
       }
       selected <- selected_catalog()
@@ -610,7 +602,7 @@ quality_control_server <- function(
         return(alert_ui("Select a run with exactly one metadata row to assign quality.", "warning"))
       }
       shiny::tagList(
-        alert_ui("Quality review is unlocked for this browser session.", "info"),
+        alert_ui("Quality assessment is open to anyone using this app.", "info"),
         shiny::div(
           class = "quality-action-grid",
           shiny::actionButton(session$ns("set_good"), "Good", class = "btn-success"),
@@ -621,18 +613,9 @@ quality_control_server <- function(
       )
     })
 
-    shiny::observeEvent(input$unlock, {
-      if (identical(input$access_code, config$review_access_code)) {
-        reviewer_unlocked(TRUE)
-        shiny::showNotification("Quality review unlocked.", type = "message")
-      } else {
-        shiny::showNotification("The reviewer access code is incorrect.", type = "error")
-      }
-    }, ignoreInit = TRUE)
-
     write_quality <- function(value) {
       selected <- selected_catalog()
-      if (!reviewer_unlocked() || nrow(selected) != 1L || selected$metadata_matches != 1L) return()
+      if (!sheet_writeback_configured(config) || nrow(selected) != 1L || selected$metadata_matches != 1L) return()
       result <- tryCatch(
         write_quality_assessment(
           selected$run_id, value, selected$quality,

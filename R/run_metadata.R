@@ -19,6 +19,10 @@ WALZ_METADATA_COLUMN_LABELS <- c(
 
 WALZ_QUALITY_COLUMN <- "quality assessment"
 WALZ_QUALITY_LEVELS <- c("good", "medium", "bad", "unassessed")
+WALZ_DARK2 <- c(
+  "#1B9E77", "#D95F02", "#7570B3", "#E7298A",
+  "#66A61E", "#E6AB02", "#A6761D", "#666666"
+)
 
 .walz_metadata_cache <- new.env(parent = emptyenv())
 
@@ -322,27 +326,22 @@ run_palette <- function(count) {
   if (count <= 0L) {
     return(character())
   }
-  base <- c(
-    "#28754D", "#BD5D38", "#426A8C", "#8A5B9E", "#C6922D",
-    "#4F8B8B", "#B4476B", "#6F6B3F", "#2384A1", "#8B5A2B"
-  )
-  if (count <= length(base)) {
-    return(base[seq_len(count)])
+  if (count <= length(WALZ_DARK2)) {
+    return(WALZ_DARK2[seq_len(count)])
   }
-  extras <- grDevices::hcl.colors(count + length(base), palette = "Dark 3")
-  extras <- extras[!tolower(extras) %in% tolower(base)]
-  c(base, extras[seq_len(count - length(base))])
+  grDevices::colorRampPalette(WALZ_DARK2)(count)
 }
 
 stable_run_colour <- function(run_id) {
   run_id <- normalize_run_id(run_id)
+  palette <- grDevices::colorRampPalette(WALZ_DARK2)(256L)
   unname(vapply(run_id, function(value) {
     bytes <- utf8ToInt(value)
     if (length(bytes) == 0L) {
-      return("#28754D")
+      return(WALZ_DARK2[[1]])
     }
-    hue <- sum(bytes * seq_along(bytes) * 17L) %% 360
-    grDevices::hcl(h = hue, c = 62, l = 46, fixup = TRUE)
+    position <- 1L + (sum(bytes * seq_along(bytes) * 17L) %% length(palette))
+    palette[[position]]
   }, character(1)))
 }
 

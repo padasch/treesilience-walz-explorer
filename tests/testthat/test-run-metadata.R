@@ -109,7 +109,7 @@ test_that("run IDs produce deterministic relative and absolute date labels", {
   expect_equal(metadata_column_label(".display_date"), "Date")
 })
 
-test_that("duplicate exact metadata rows are retained and colors are distinct", {
+test_that("duplicate exact metadata rows are retained and colors use Dark2", {
   metadata <- clean_run_metadata(data.frame(
     timestamp = c("run-one", "run-one"),
     species = c("beech", "oak"),
@@ -117,8 +117,9 @@ test_that("duplicate exact metadata rows are retained and colors are distinct", 
   ))
 
   expect_equal(nrow(match_run_metadata(metadata, "run-one.csv")), 2L)
+  expect_equal(run_palette(8), WALZ_DARK2)
   expect_length(unique(run_palette(20)), 20L)
-  expect_match(hex_to_rgba("#28754D", 0.1), "^rgba\\(")
+  expect_match(hex_to_rgba(WALZ_DARK2[[1]], 0.1), "^rgba\\(")
 })
 
 test_that("metadata loader validates the required run ID column", {

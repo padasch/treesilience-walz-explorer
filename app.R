@@ -150,8 +150,8 @@ ui <- bslib::page_sidebar(
     version = 5,
     bg = "#f7f8f4",
     fg = "#243228",
-    primary = "#28754d",
-    secondary = "#6c8e75",
+    primary = "#1b9e77",
+    secondary = "#7570b3",
     base_font = "system-ui"
   ),
   fillable = FALSE,

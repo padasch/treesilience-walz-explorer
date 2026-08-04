@@ -52,6 +52,11 @@ test_that("multi-run controls, metadata, plots, and protocols stay synchronized"
   expect_match(page_html, "Response Analysis", fixed = TRUE)
   expect_match(page_html, "qc-species", fixed = TRUE)
   expect_match(page_html, "analysis-species", fixed = TRUE)
+  expect_match(page_html, "analysis-selection_mode", fixed = TRUE)
+  expect_match(page_html, "Choose runs manually", fixed = TRUE)
+  expect_match(page_html, "analysis-run_preset", fixed = TRUE)
+  expect_match(page_html, "analysis-manual_runs", fixed = TRUE)
+  expect_match(page_html, "Local analysis — oak + beech series (20)", fixed = TRUE)
   expect_match(page_html, "value=\"good\" checked", fixed = TRUE)
 
   parsed <- dew_point_fixture()

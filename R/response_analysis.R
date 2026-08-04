@@ -1,3 +1,90 @@
+WALZ_CURATED_OAK_RUNS <- c(
+  "20260715_0928_OF",
+  "20260715_1439_OF",
+  "20260716_0903_OF",
+  "20260716_0807_OF",
+  "20260716_1233_OF",
+  "20260717_1205_OF",
+  "20260720_0846_OF",
+  "20260720_1330_OF",
+  "20260721_0825_OF",
+  "20260721_1240_OF"
+)
+
+WALZ_CURATED_BEECH_RUNS <- c(
+  "20260715_0906_B1",
+  "20260715_1439_B1",
+  "20260716_0903_B1",
+  "20260716_1230_B1",
+  "20260717_0807_B1",
+  "20260717_1205_B1",
+  "20260720_0846_B1",
+  "20260720_1330_B1",
+  "20260721_0825_B1",
+  "20260721_1240_B1"
+)
+
+WALZ_CURATED_PRUNUS_RUNS <-
+  "20260713_1023_P1"
+
+WALZ_RESPONSE_PRESETS <- list(
+  curated_oak = WALZ_CURATED_OAK_RUNS,
+  curated_beech = WALZ_CURATED_BEECH_RUNS,
+  curated_oak_beech = c(WALZ_CURATED_OAK_RUNS, WALZ_CURATED_BEECH_RUNS),
+  curated_prunus = WALZ_CURATED_PRUNUS_RUNS,
+  curated_all = c(
+    WALZ_CURATED_OAK_RUNS,
+    WALZ_CURATED_BEECH_RUNS,
+    WALZ_CURATED_PRUNUS_RUNS
+  )
+)
+
+WALZ_RESPONSE_PRESET_LABELS <- c(
+  curated_oak = "Local analysis — oak temperature series (10)",
+  curated_beech = "Local analysis — beech temperature series (10)",
+  curated_oak_beech = "Local analysis — oak + beech series (20)",
+  curated_prunus = "Local analysis — Prunus pilot (1)",
+  curated_all = "Local analysis — full curated set (21)"
+)
+
+resolve_response_preset <- function(preset, catalog) {
+  requested <- WALZ_RESPONSE_PRESETS[[preset]]
+  if (is.null(requested) || is.null(catalog) || nrow(catalog) == 0L) {
+    missing <- if (is.null(requested)) character() else requested
+    return(list(ids = character(), matched = character(), missing = missing))
+  }
+  positions <- match(normalize_run_id(requested), normalize_run_id(catalog$run_id))
+  found <- !is.na(positions)
+  list(
+    ids = catalog$id[positions[found]],
+    matched = catalog$run_id[positions[found]],
+    missing = requested[!found]
+  )
+}
+
+response_run_choices <- function(catalog) {
+  if (is.null(catalog) || nrow(catalog) == 0L) return(character())
+  labels <- sprintf(
+    "%s — %s · %s · %s",
+    catalog$run_id,
+    ifelse(nzchar(catalog$species), catalog$species, "species unavailable"),
+    ifelse(nzchar(catalog$plant_id), paste("plant", catalog$plant_id), "plant unavailable"),
+    tools::toTitleCase(catalog$quality)
+  )
+  stats::setNames(catalog$id, labels)
+}
+
+manual_response_catalog <- function(catalog, selected_ids) {
+  selected_ids <- as.character(selected_ids)
+  selected_ids <- selected_ids[!is.na(selected_ids) & nzchar(selected_ids)]
+  if (is.null(catalog)) return(data.frame())
+  if (nrow(catalog) == 0L || length(selected_ids) == 0L) {
+    return(catalog[0, , drop = FALSE])
+  }
+  positions <- match(selected_ids, catalog$id)
+  catalog[positions[!is.na(positions)], , drop = FALSE]
+}
+
 response_model_coverage <- function(data) {
   usable <- data[
     data$include_model & is.finite(data$A_mean) &
@@ -312,7 +399,7 @@ run_response_job <- function(
   )
   list(
     steps = steps, model = model, batch_results = batch_results,
-    new_extractions = new_extractions, errors = errors
+    new_extractions = new_extractions, errors = errors, selection = catalog
   )
 }
 
@@ -321,9 +408,12 @@ make_observed_response_plot <- function(steps) {
   if (nrow(usable) == 0L) return(plotly::plotly_empty(type = "scatter", mode = "lines"))
   temperatures <- aggregate(Tleaf_mean ~ run_id, usable, mean, na.rm = TRUE)
   range_t <- range(temperatures$Tleaf_mean, finite = TRUE)
+  colour_range <- if (diff(range_t) == 0) range_t + c(-0.5, 0.5) else range_t
   palette <- grDevices::colorRampPalette(c("#395f8c", "#efe0a4", "#ae402f"))(100)
   plot <- plotly::plot_ly()
-  for (run in unique(usable$run_id)) {
+  runs <- unique(usable$run_id)
+  for (index in seq_along(runs)) {
+    run <- runs[[index]]
     data <- usable[usable$run_id == run, , drop = FALSE]
     data <- data[order(data$PPFD_mean), , drop = FALSE]
     temperature <- mean(data$Tleaf_mean, na.rm = TRUE)
@@ -332,14 +422,21 @@ make_observed_response_plot <- function(steps) {
     plot <- plotly::add_trace(
       plot, x = data$PPFD_mean, y = data$A_mean,
       type = "scatter", mode = "lines+markers", name = run,
-      line = list(color = colour), marker = list(color = colour),
+      line = list(color = colour, width = 2),
+      marker = list(
+        color = rep(temperature, nrow(data)),
+        colorscale = "RdYlBu", reversescale = TRUE,
+        cmin = colour_range[[1]], cmax = colour_range[[2]],
+        showscale = index == 1L,
+        colorbar = list(title = list(text = "Mean Tleaf (°C)"))
+      ),
       text = sprintf("%s<br>Mean Tleaf %.2f°C<br>A %.3f<br>PPFD %.1f", run, temperature, data$A_mean, data$PPFD_mean),
-      hovertemplate = "%{text}<extra></extra>"
+      hovertemplate = "%{text}<extra></extra>", showlegend = FALSE
     )
   }
   plotly::layout(
     plot, xaxis = list(title = "Measured PPFD"), yaxis = list(title = "A"),
-    legend = list(title = list(text = "Run (colour = mean Tleaf)"))
+    margin = list(r = 105)
   )
 }
 
@@ -350,20 +447,34 @@ make_temperature_slice_plot <- function(model_result) {
   grid <- model_result$grid
   slices <- unique(stats::quantile(model_result$data$PPFD_mean, seq(0, 1, length.out = 6)))
   colours <- grDevices::hcl.colors(length(slices), "YlOrRd", rev = TRUE)
+  light_range <- range(slices, finite = TRUE)
+  if (diff(light_range) == 0) light_range <- light_range + c(-0.5, 0.5)
   plot <- plotly::plot_ly()
   for (index in seq_along(slices)) {
     light <- unique(grid$PPFD_mean)[which.min(abs(unique(grid$PPFD_mean) - slices[[index]]))]
     data <- grid[abs(grid$PPFD_mean - light) < 1e-8 & is.finite(grid$predicted_A), , drop = FALSE]
-    plot <- plotly::add_lines(
+    plot <- plotly::add_trace(
       plot, x = data$Tleaf_mean, y = data$predicted_A,
+      type = "scatter", mode = "lines+markers",
       name = sprintf("PPFD %.0f", slices[[index]]),
-      line = list(color = colours[[index]], width = 2)
+      line = list(color = colours[[index]], width = 2),
+      marker = list(
+        color = rep(slices[[index]], nrow(data)), size = 4,
+        colorscale = "YlOrRd", cmin = light_range[[1]], cmax = light_range[[2]],
+        showscale = index == 1L,
+        colorbar = list(title = list(text = "Measured PPFD"), tickvals = slices)
+      ),
+      text = sprintf(
+        "PPFD %.1f<br>Tleaf %.2f°C<br>Modeled A %.3f",
+        slices[[index]], data$Tleaf_mean, data$predicted_A
+      ),
+      hovertemplate = "%{text}<extra></extra>", showlegend = FALSE
     )
   }
   plotly::layout(
     plot, xaxis = list(title = "Leaf temperature (°C)"),
     yaxis = list(title = "Modeled A"),
-    legend = list(title = list(text = "Measured-PPFD slice"))
+    margin = list(r = 105)
   )
 }
 
@@ -437,26 +548,61 @@ response_sidebar_ui <- function(id) {
   ns <- shiny::NS(id)
   shiny::tagList(
     shiny::h5("Response Analysis selection"),
-    shiny::selectInput(ns("species"), "Species (required)", choices = character()),
-    shiny::selectizeInput(ns("plant_ids"), "Plant IDs", choices = character(), multiple = TRUE),
-    shiny::checkboxGroupInput(
-      ns("qualities"), "Quality assessment",
-      choices = c("Good" = "good", "Medium" = "medium", "Bad" = "bad", "Unassessed" = "unassessed"),
-      selected = "good"
+    shiny::radioButtons(
+      ns("selection_mode"), "How to choose runs",
+      choices = c(
+        "Filter by metadata" = "filters",
+        "Choose runs manually" = "manual"
+      ),
+      selected = "filters"
     ),
-    bslib::accordion(
-      bslib::accordion_panel(
-        "Advanced filters",
-        shiny::dateRangeInput(ns("date_range"), "Date"),
-        shiny::selectizeInput(ns("walz_number"), "WALZ number", choices = character(), multiple = TRUE),
-        shiny::selectizeInput(ns("target_tcuv"), "Target Tcuv", choices = character(), multiple = TRUE),
-        shiny::selectizeInput(ns("h2o_input"), "H2O input", choices = character(), multiple = TRUE),
-        shiny::selectizeInput(ns("co2_input"), "CO2 input", choices = character(), multiple = TRUE),
-        shiny::selectizeInput(ns("xibox_temperature"), "XiBox temperature", choices = character(), multiple = TRUE),
-        shiny::selectizeInput(ns("xibox_light"), "XiBox light", choices = character(), multiple = TRUE),
-        shiny::selectizeInput(ns("xibox_humidity"), "XiBox humidity", choices = character(), multiple = TRUE),
-        shiny::textInput(ns("protocol_text"), "Protocol description contains")
+    shiny::conditionalPanel(
+      condition = "input.selection_mode === 'filters'",
+      ns = ns,
+      shiny::selectInput(ns("species"), "Species (required)", choices = character()),
+      shiny::selectizeInput(ns("plant_ids"), "Plant IDs", choices = character(), multiple = TRUE),
+      shiny::checkboxGroupInput(
+        ns("qualities"), "Quality assessment",
+        choices = c("Good" = "good", "Medium" = "medium", "Bad" = "bad", "Unassessed" = "unassessed"),
+        selected = "good"
+      ),
+      bslib::accordion(
+        bslib::accordion_panel(
+          "Advanced filters",
+          shiny::dateRangeInput(ns("date_range"), "Date"),
+          shiny::selectizeInput(ns("walz_number"), "WALZ number", choices = character(), multiple = TRUE),
+          shiny::selectizeInput(ns("target_tcuv"), "Target Tcuv", choices = character(), multiple = TRUE),
+          shiny::selectizeInput(ns("h2o_input"), "H2O input", choices = character(), multiple = TRUE),
+          shiny::selectizeInput(ns("co2_input"), "CO2 input", choices = character(), multiple = TRUE),
+          shiny::selectizeInput(ns("xibox_temperature"), "XiBox temperature", choices = character(), multiple = TRUE),
+          shiny::selectizeInput(ns("xibox_light"), "XiBox light", choices = character(), multiple = TRUE),
+          shiny::selectizeInput(ns("xibox_humidity"), "XiBox humidity", choices = character(), multiple = TRUE),
+          shiny::textInput(ns("protocol_text"), "Protocol description contains")
+        )
       )
+    ),
+    shiny::conditionalPanel(
+      condition = "input.selection_mode === 'manual'",
+      ns = ns,
+      shiny::selectInput(
+        ns("run_preset"), "Run preset",
+        choices = c("Custom selection" = "", stats::setNames(
+          names(WALZ_RESPONSE_PRESET_LABELS), WALZ_RESPONSE_PRESET_LABELS
+        ))
+      ),
+      shiny::selectizeInput(
+        ns("manual_runs"), "Measurement runs",
+        choices = character(), selected = character(), multiple = TRUE,
+        options = list(
+          plugins = list("remove_button"), closeAfterSelect = FALSE,
+          hideSelected = TRUE, placeholder = "Select one or more runs"
+        )
+      ),
+      shiny::p(
+        class = "control-help",
+        "Presets reproduce the explicitly curated files from the local response-landscape analysis. You can add or remove runs after applying a preset."
+      ),
+      shiny::uiOutput(ns("preset_status"))
     ),
     shiny::actionButton(ns("run"), "Run analysis", icon = shiny::icon("play"), class = "btn-primary")
   )
@@ -523,10 +669,21 @@ response_analysis_server <- function(
       }
       dates <- exact$date[!is.na(exact$date)]
       if (length(dates)) shiny::updateDateRangeInput(session, "date_range", start = min(dates), end = max(dates))
+
+      selected <- if (is.null(input$manual_runs)) character() else input$manual_runs
+      selected <- selected[selected %in% current$id]
+      shiny::updateSelectizeInput(
+        session, "manual_runs", choices = response_run_choices(current),
+        selected = selected, server = TRUE
+      )
     })
 
     selected_catalog <- shiny::reactive({
       current <- catalog()
+      mode <- if (is.null(input$selection_mode)) "filters" else input$selection_mode
+      if (identical(mode, "manual")) {
+        return(manual_response_catalog(current, input$manual_runs))
+      }
       current <- current[current$metadata_matches == 1L, , drop = FALSE]
       if (is.null(input$species) || !nzchar(input$species)) return(current[0, , drop = FALSE])
       current <- current[current$species == input$species, , drop = FALSE]
@@ -547,6 +704,30 @@ response_analysis_server <- function(
       current
     })
 
+    shiny::observeEvent(input$run_preset, {
+      if (is.null(input$run_preset) || !nzchar(input$run_preset)) return()
+      resolved <- resolve_response_preset(input$run_preset, catalog())
+      shiny::updateSelectizeInput(
+        session, "manual_runs", selected = resolved$ids, server = TRUE
+      )
+    }, ignoreInit = TRUE)
+
+    output$preset_status <- shiny::renderUI({
+      if (is.null(input$run_preset) || !nzchar(input$run_preset)) return(NULL)
+      resolved <- resolve_response_preset(input$run_preset, catalog())
+      label <- unname(WALZ_RESPONSE_PRESET_LABELS[[input$run_preset]])
+      if (length(resolved$missing) == 0L) {
+        return(alert_ui(sprintf(
+          "%s: all %d curated run(s) are available.", label, length(resolved$ids)
+        ), "info"))
+      }
+      alert_ui(sprintf(
+        "%s: %d available; %d missing from Drive (%s).",
+        label, length(resolved$ids), length(resolved$missing),
+        paste(resolved$missing, collapse = ", ")
+      ), "warning")
+    })
+
     shiny::observe({
       current <- catalog()
       species_current <- if (!is.null(input$species)) input$species else ""
@@ -559,19 +740,29 @@ response_analysis_server <- function(
     shiny::observeEvent(input$run, {
       selected <- selected_catalog()
       last_error(NULL)
-      if (is.null(input$species) || !nzchar(input$species)) {
-        last_error("Choose one species before running the analysis.")
-        return()
-      }
-      if (length(input$qualities) == 0L) {
-        last_error("Select at least one quality assessment.")
+      mode <- if (is.null(input$selection_mode)) "filters" else input$selection_mode
+      if (identical(mode, "filters")) {
+        if (is.null(input$species) || !nzchar(input$species)) {
+          last_error("Choose one species before running the analysis.")
+          return()
+        }
+        if (length(input$qualities) == 0L) {
+          last_error("Select at least one quality assessment.")
+          return()
+        }
+      } else if (length(input$manual_runs) == 0L) {
+        last_error("Choose at least one measurement run or apply a preset.")
         return()
       }
       if (nrow(selected) == 0L) {
-        last_error(paste0(
-          "No exact metadata/file matches meet these filters. The default is Good only; ",
-          "unassessed runs are not included silently."
-        ))
+        last_error(if (identical(mode, "filters")) {
+          paste0(
+            "No exact metadata/file matches meet these filters. The default is Good only; ",
+            "unassessed runs are not included silently."
+          )
+        } else {
+          "None of the manually selected runs are currently available."
+        })
         return()
       }
       records <- measurements()[match(selected$id, measurements()$id), , drop = FALSE]
@@ -628,7 +819,7 @@ response_analysis_server <- function(
       }
       source_notes <- list()
       if (length(unmatched_files)) source_notes <- c(source_notes, list(alert_ui(sprintf(
-        "%d measurement file(s) lack a unique metadata row and are excluded from analysis filters.",
+        "%d measurement file(s) lack a unique metadata row and are unavailable to metadata-filter mode; they can still be chosen manually.",
         length(unmatched_files)
       ), "warning")))
       if (length(missing_files)) source_notes <- c(source_notes, list(alert_ui(sprintf(
@@ -636,8 +827,13 @@ response_analysis_server <- function(
         length(missing_files)
       ), "warning")))
       value <- result()
+      mode <- if (is.null(input$selection_mode)) "filters" else input$selection_mode
       if (is.null(value)) return(shiny::tagList(
-        alert_ui("Choose a species and press Run analysis. Good-quality runs are selected by default.", "info"),
+        alert_ui(if (identical(mode, "filters")) {
+          "Choose a species and press Run analysis. Good-quality runs are selected by default."
+        } else {
+          "Choose runs directly or apply a local-analysis preset, then press Run analysis."
+        }, "info"),
         source_notes
       ))
       model <- value$model
@@ -645,6 +841,9 @@ response_analysis_server <- function(
       level <- if (isTRUE(model$supported)) "info" else "warning"
       shiny::tagList(
         source_notes,
+        if (length(unique(value$selection$species[nzchar(value$selection$species)])) > 1L) {
+          alert_ui("The manual selection contains multiple species; the exploratory GAM pools them into one response surface.", "warning")
+        },
         alert_ui(model$coverage$summary$message, "info"),
         alert_ui(model$diagnostics$interpretation, level),
         if (length(value$errors)) alert_ui(sprintf(

@@ -1,5 +1,5 @@
 sheet_writeback_configured <- function(config) {
-  nzchar(config$review_access_code) && nzchar(config$service_account_json_b64)
+  nzchar(config$service_account_json_b64)
 }
 
 sheet_column_letter <- function(index) {

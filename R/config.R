@@ -59,7 +59,6 @@ walz_config <- function() {
       "WALZ_METADATA_SHEET_NAME",
       unset = WALZ_DEFAULT_METADATA_SHEET_NAME
     ),
-    review_access_code = Sys.getenv("WALZ_REVIEW_ACCESS_CODE", unset = ""),
     service_account_json_b64 = Sys.getenv(
       "WALZ_GOOGLE_SERVICE_ACCOUNT_JSON_B64",
       unset = ""
