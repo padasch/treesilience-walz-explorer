@@ -334,14 +334,13 @@ run_palette <- function(count) {
 
 stable_run_colour <- function(run_id) {
   run_id <- normalize_run_id(run_id)
-  palette <- grDevices::colorRampPalette(WALZ_DARK2)(256L)
   unname(vapply(run_id, function(value) {
     bytes <- utf8ToInt(value)
     if (length(bytes) == 0L) {
       return(WALZ_DARK2[[1]])
     }
-    position <- 1L + (sum(bytes * seq_along(bytes) * 17L) %% length(palette))
-    palette[[position]]
+    position <- 1L + (sum(bytes * seq_along(bytes) * 17L) %% length(WALZ_DARK2))
+    WALZ_DARK2[[position]]
   }, character(1)))
 }
 

@@ -119,6 +119,7 @@ test_that("duplicate exact metadata rows are retained and colors use Dark2", {
   expect_equal(nrow(match_run_metadata(metadata, "run-one.csv")), 2L)
   expect_equal(run_palette(8), WALZ_DARK2)
   expect_length(unique(run_palette(20)), 20L)
+  expect_true(all(stable_run_colour(c("run-one", "run-two")) %in% WALZ_DARK2))
   expect_match(hex_to_rgba(WALZ_DARK2[[1]], 0.1), "^rgba\\(")
 })
 
