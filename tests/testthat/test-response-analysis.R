@@ -123,6 +123,20 @@ test_that("response line plots expose continuous color legends", {
   expect_equal(slices$x$data[[1]]$marker$colorbar$title$text, "Measured PPFD")
 })
 
+test_that("response analysis ends with a concise explanation of the fitted model", {
+  html <- htmltools::renderTags(response_main_ui("analysis"))$html
+  expect_match(html, "Model theory", fixed = TRUE)
+  expect_match(html, "tensor-product smooth", fixed = TRUE)
+  expect_match(html, "REML", fixed = TRUE)
+  expect_match(html, "log(1 + PPFD_mean)", fixed = TRUE)
+  expect_match(html, "outside the sampled temperature–PPFD support", fixed = TRUE)
+  expect_match(html, "without a separate run effect", fixed = TRUE)
+  expect_lt(
+    regexpr("Model diagnostics", html, fixed = TRUE)[[1]],
+    regexpr("Model theory", html, fixed = TRUE)[[1]]
+  )
+})
+
 test_that("poor model fits show one metric warning and retain fitted outputs", {
   bad_model <- list(
     status = "success", supported = FALSE,

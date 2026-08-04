@@ -737,6 +737,33 @@ response_sidebar_ui <- function(id) {
   )
 }
 
+response_model_theory_ui <- function() {
+  bslib::card(
+    bslib::card_header("Model theory"),
+    shiny::div(
+      class = "model-theory",
+      shiny::p(
+        shiny::strong("Data: "),
+        "Each model point is the mean of the final three minutes of a complete, stable light step. The response is net CO₂ assimilation (A); the predictors are mean leaf temperature and measured PPFD from PARtop."
+      ),
+      shiny::p(
+        shiny::strong("Model: "),
+        "The exploratory generalized additive model is ",
+        shiny::tags$code("A_mean = β₀ + f(Tleaf_mean, log(1 + PPFD_mean)) + ε"),
+        ". The two-dimensional tensor-product smooth is fitted with REML and automatic shrinkage, allowing a curved temperature–light interaction without imposing a fixed response shape."
+      ),
+      shiny::p(
+        shiny::strong("Optima: "),
+        "Predictions outside the sampled temperature–PPFD support are masked. Optima are maxima along slices through the fitted surface; the ≥90% range contains conditions whose predicted A is at least 90% of that maximum. A boundary optimum means the sampled range did not establish a turning point."
+      ),
+      shiny::p(
+        shiny::strong("Interpretation: "),
+        "All selected runs are pooled into one exploratory surface, without a separate run effect. Use the extraction audit and model diagnostics to judge reliability; low diagnostic scores trigger a warning but do not hide the fitted results."
+      )
+    )
+  )
+}
+
 response_main_ui <- function(id) {
   ns <- shiny::NS(id)
   shiny::div(
@@ -756,7 +783,8 @@ response_main_ui <- function(id) {
       bslib::card_header("Model diagnostics"),
       shiny::uiOutput(ns("diagnostics")),
       shiny::uiOutput(ns("download_buttons"))
-    )
+    ),
+    response_model_theory_ui()
   )
 }
 
