@@ -30,7 +30,7 @@ build_run_catalog <- function(measurements, metadata) {
     } else ""
     quality <- as.character(canonical_quality(quality_raw))
     invalid_quality <- nzchar(quality_raw) &&
-      !tolower(quality_raw) %in% c("good", "medium", "bad")
+      !tolower(quality_raw) %in% WALZ_QUALITY_SOURCE_LEVELS
     datetime <- run_datetime_from_id(run_id)
     data.frame(
       id = record$id[[1]],

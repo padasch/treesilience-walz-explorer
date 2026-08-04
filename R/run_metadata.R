@@ -18,7 +18,8 @@ WALZ_METADATA_COLUMN_LABELS <- c(
 )
 
 WALZ_QUALITY_COLUMN <- "quality assessment"
-WALZ_QUALITY_LEVELS <- c("good", "medium", "bad", "unassessed")
+WALZ_QUALITY_SOURCE_LEVELS <- c("good", "medium", "bad")
+WALZ_QUALITY_LEVELS <- c(WALZ_QUALITY_SOURCE_LEVELS, "unassessed")
 WALZ_DARK2 <- c(
   "#1B9E77", "#D95F02", "#7570B3", "#E7298A",
   "#66A61E", "#E6AB02", "#A6761D", "#666666"
@@ -146,8 +147,9 @@ clear_metadata_cache <- function() {
 
 canonical_quality <- function(value) {
   value <- tolower(trimws(as.character(value)))
-  value[is.na(value) | !nzchar(value)] <- "unassessed"
-  invalid <- !value %in% WALZ_QUALITY_LEVELS
+  missing <- is.na(value) | !nzchar(value)
+  value[missing] <- "unassessed"
+  invalid <- !missing & !value %in% WALZ_QUALITY_SOURCE_LEVELS
   value[invalid] <- "unassessed"
   attr(value, "invalid") <- invalid
   value
@@ -158,7 +160,9 @@ metadata_quality <- function(metadata, measurement_name) {
   if (nrow(matches) != 1L || !WALZ_QUALITY_COLUMN %in% names(matches)) {
     return("unassessed")
   }
-  unname(canonical_quality(matches[[WALZ_QUALITY_COLUMN]][[1]]))
+  quality <- canonical_quality(matches[[WALZ_QUALITY_COLUMN]][[1]])
+  attributes(quality) <- NULL
+  quality[[1]]
 }
 
 match_run_metadata <- function(metadata, measurement_name) {

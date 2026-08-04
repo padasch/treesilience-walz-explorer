@@ -76,7 +76,7 @@ Drive listings and public metadata are cached process-wide for 60 seconds. Downl
 
 ## Quality assessment workflow
 
-Quality Control is intentionally read-only. It groups curves using the public metadata Sheet and links to that Sheet for manual changes. Refresh the app after editing `quality assessment` to update the Good, Medium, Bad, and Unassessed sections.
+Quality Control is intentionally read-only. The app reads exactly the `quality assessment` column and accepts `good`, `medium`, and `bad` as its source values. Blank or NA cells, unmatched runs, and unexpected values are displayed as `unassessed` in memory; the app never fills or changes cells in the Sheet. Refresh the app after editing `quality assessment` manually to update the Good, Medium, Bad, and Unassessed sections.
 
 ## Response model
 

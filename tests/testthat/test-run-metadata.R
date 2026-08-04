@@ -23,6 +23,43 @@ test_that("metadata cleaning removes blank rows and columns but preserves header
   expect_equal(metadata$.run_id, c("run-one", "run-two"))
 })
 
+test_that("quality assessment is read from one exact column and blanks are derived as unassessed", {
+  expect_identical(WALZ_QUALITY_COLUMN, "quality assessment")
+  expect_identical(WALZ_QUALITY_SOURCE_LEVELS, c("good", "medium", "bad"))
+  quality <- canonical_quality(c("good", " MEDIUM ", "BAD", "", NA, "unknown"))
+  expect_identical(
+    as.vector(quality),
+    c("good", "medium", "bad", "unassessed", "unassessed", "unassessed")
+  )
+  expect_identical(
+    unname(attr(canonical_quality(c("", NA, "unknown")), "invalid")),
+    c(FALSE, FALSE, TRUE)
+  )
+
+  missing_quality <- clean_run_metadata(data.frame(
+    timestamp = c("run-one", "run-two"),
+    `Quality assessment` = c("good", "bad"),
+    check.names = FALSE, stringsAsFactors = FALSE
+  ))
+  expect_true(WALZ_QUALITY_COLUMN %in% names(missing_quality))
+  expect_equal(missing_quality[[WALZ_QUALITY_COLUMN]], c("", ""))
+  expect_equal(metadata_quality(missing_quality, "run-one.csv"), "unassessed")
+})
+
+test_that("metadata integration remains read-only", {
+  source_files <- list.files(
+    file.path(project_root, "R"), pattern = "[.]R$", full.names = TRUE
+  )
+  source_code <- paste(vapply(source_files, function(path) {
+    paste(readLines(path, warn = FALSE), collapse = "\n")
+  }, character(1)), collapse = "\n")
+
+  expect_false(grepl(
+    "googlesheets4::|gs4_auth|range_write|sheet_write|sheet_append|values[.]update",
+    source_code, ignore.case = TRUE
+  ))
+})
+
 test_that("measurement metadata matching is exact apart from case and whitespace", {
   metadata <- clean_run_metadata(data.frame(
     timestamp = c("20260727_0834_B2", "20260727_0834_B20"),
