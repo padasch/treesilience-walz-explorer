@@ -134,9 +134,16 @@ qc_trace_hover <- function(data) {
   )
 }
 
+qc_overview_annotation_titles <- function() {
+  quality_labels <- c("Good", "Medium", "Bad", "Unassessed")
+  as.vector(rbind(
+    paste(quality_labels, "— original scale"),
+    paste(quality_labels, "— normalized")
+  ))
+}
+
 make_qc_overview_plot <- function(step_data) {
   groups <- c("good", "medium", "bad", "unassessed")
-  labels <- c(Good = "good", Medium = "medium", Bad = "bad", Unassessed = "unassessed")
   if (is.null(step_data) || nrow(step_data) == 0L) {
     return(list(
       widget = plotly::event_register(
@@ -218,10 +225,7 @@ make_qc_overview_plot <- function(step_data) {
     panels,
     list(nrows = 4L, margin = 0.055, shareX = TRUE, titleX = TRUE, titleY = TRUE)
   ))
-  titles <- as.vector(t(rbind(
-    paste(names(labels), "— original scale"),
-    paste(names(labels), "— normalized")
-  )))
+  titles <- qc_overview_annotation_titles()
   title_y <- rep(c(1, 0.75, 0.50, 0.25), each = 2L)
   title_x <- rep(c(0.23, 0.77), times = 4L)
   annotations <- lapply(seq_along(titles), function(index) list(

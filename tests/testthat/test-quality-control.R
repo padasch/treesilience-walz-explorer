@@ -46,6 +46,46 @@ test_that("QC normalization keeps negative A and omits non-positive runs", {
   )))
 })
 
+test_that("QC overview pairs each quality row with original left and normalized right", {
+  qualities <- c("good", "medium", "bad", "unassessed")
+  data <- do.call(rbind, lapply(seq_along(qualities), function(index) {
+    data.frame(
+      run_id = rep(paste0("run-", qualities[[index]]), 3),
+      PPFD_mean = c(0, 100, 500), PPFD_sd = 1,
+      A_mean = c(-index, index, 2 * index), A_sd = .1, A_slope = 0,
+      coverage = 1, window_complete = TRUE, quality = qualities[[index]],
+      species = "oak", plant_id = as.character(index), metadata_status = "Exact ID",
+      colour = rep(WALZ_DARK2[[index]], 3), stringsAsFactors = FALSE
+    )
+  }))
+
+  result <- make_qc_overview_plot(data)
+  built <- suppressMessages(plotly::plotly_build(result$widget))
+  annotations <- built$x$layout$annotations
+  annotation_text <- vapply(annotations, `[[`, character(1), "text")
+  annotation_x <- vapply(annotations, `[[`, numeric(1), "x")
+  annotation_y <- vapply(annotations, `[[`, numeric(1), "y")
+
+  expect_equal(annotation_text, c(
+    "Good — original scale", "Good — normalized",
+    "Medium — original scale", "Medium — normalized",
+    "Bad — original scale", "Bad — normalized",
+    "Unassessed — original scale", "Unassessed — normalized"
+  ))
+  expect_equal(annotation_x, rep(c(0.23, 0.77), 4))
+  expect_equal(annotation_y, rep(c(1, 0.75, 0.5, 0.25), each = 2))
+
+  plotted_traces <- Filter(function(trace) !is.null(trace$name), built$x$data)
+  trace_maxima <- vapply(plotted_traces, function(trace) {
+    max(as.numeric(unlist(trace$y)), na.rm = TRUE)
+  }, numeric(1))
+  expect_equal(trace_maxima, as.vector(rbind(2 * seq_along(qualities), rep(1, 4))))
+  expect_equal(
+    vapply(plotted_traces, `[[`, character(1), "yaxis"),
+    c("y", paste0("y", 2:8))
+  )
+})
+
 test_that("QC manual selection preserves the requested run order", {
   catalog <- data.frame(
     id = c("a", "b", "c"), run_id = c("run-a", "run-b", "run-c"),
