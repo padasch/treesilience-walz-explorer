@@ -15,6 +15,16 @@ make_response_steps <- function(run_count = 5L, light_count = 6L) {
   do.call(rbind, rows)
 }
 
+if (!exists("alert_ui", envir = environment(response_model_section_ui), inherits = FALSE)) {
+  assign(
+    "alert_ui",
+    function(message, type = "info") {
+      shiny::div(class = paste0("alert alert-", type), message)
+    },
+    envir = environment(response_model_section_ui)
+  )
+}
+
 test_that("response coverage enforces runs, light levels, and observations", {
   ready <- response_model_coverage(make_response_steps())
   expect_true(ready$ready)
@@ -109,4 +119,52 @@ test_that("response line plots expose continuous color legends", {
   slices <- suppressMessages(plotly::plotly_build(make_temperature_slice_plot(model)))
   expect_true(isTRUE(slices$x$data[[1]]$marker$showscale))
   expect_equal(slices$x$data[[1]]$marker$colorbar$title$text, "Measured PPFD")
+})
+
+test_that("poor model fits show one metric warning and no fitted outputs", {
+  bad_model <- list(
+    status = "success", supported = FALSE,
+    diagnostics = data.frame(
+      deviance_explained = 0.42,
+      adjusted_r_squared = 0.35,
+      predictive_r_squared = 0.18,
+      k_p_value = 0.012,
+      boundary_optimum_proportion = 0.7
+    )
+  )
+  message <- model_fit_warning_message(bad_model)
+  expect_match(message, "deviance explained = 0.42", fixed = TRUE)
+  expect_match(message, "adjusted R² = 0.35", fixed = TRUE)
+  expect_match(message, "predictive R² = 0.18", fixed = TRUE)
+  expect_match(message, "basis-check p-value = 0.012", fixed = TRUE)
+  expect_match(message, "boundary optima = 70%", fixed = TRUE)
+
+  poor_html <- htmltools::renderTags(
+    response_model_section_ui(shiny::NS("analysis"), bad_model)
+  )$html
+  expect_match(poor_html, "Fitted response not shown", fixed = TRUE)
+  expect_false(grepl("analysis-temperature_plot", poor_html, fixed = TRUE))
+  expect_false(grepl("analysis-surface_3d", poor_html, fixed = TRUE))
+  expect_false(grepl("analysis-optima_table", poor_html, fixed = TRUE))
+  poor_download_html <- htmltools::renderTags(
+    response_download_buttons_ui(shiny::NS("analysis"), bad_model)
+  )$html
+  expect_match(poor_download_html, "Extracted steps", fixed = TRUE)
+  expect_match(poor_download_html, "Diagnostics", fixed = TRUE)
+  expect_false(grepl("Model predictions", poor_download_html, fixed = TRUE))
+  expect_false(grepl("analysis-download_optima", poor_download_html, fixed = TRUE))
+
+  good_model <- bad_model
+  good_model$supported <- TRUE
+  good_html <- htmltools::renderTags(
+    response_model_section_ui(shiny::NS("analysis"), good_model)
+  )$html
+  expect_match(good_html, "analysis-temperature_plot", fixed = TRUE)
+  expect_match(good_html, "analysis-surface_3d", fixed = TRUE)
+  expect_match(good_html, "analysis-optima_table", fixed = TRUE)
+  good_download_html <- htmltools::renderTags(
+    response_download_buttons_ui(shiny::NS("analysis"), good_model)
+  )$html
+  expect_match(good_download_html, "Model predictions", fixed = TRUE)
+  expect_match(good_download_html, "analysis-download_optima", fixed = TRUE)
 })

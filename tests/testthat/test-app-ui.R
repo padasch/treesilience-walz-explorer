@@ -56,6 +56,7 @@ test_that("multi-run controls, metadata, plots, and protocols stay synchronized"
   expect_match(page_html, "Choose runs manually", fixed = TRUE)
   expect_match(page_html, "analysis-run_preset", fixed = TRUE)
   expect_match(page_html, "analysis-manual_runs", fixed = TRUE)
+  expect_match(page_html, "analysis-model_section", fixed = TRUE)
   expect_match(page_html, "First Analysis — Oak temperature series (10)", fixed = TRUE)
   expect_match(page_html, "First Analysis — Beech temperature series (10)", fixed = TRUE)
   expect_false(grepl("oak + beech", page_html, ignore.case = TRUE))

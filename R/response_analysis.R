@@ -202,11 +202,21 @@ fit_response_gam <- function(data, grid_size = 70L, basis_dimensions = c(5L, 5L)
     mean(optima$all$status == "boundary optimum")
   } else 1
   diagnostics$boundary_optimum_proportion <- boundary_fraction
-  diagnostics$supported <- is.finite(diagnostics$predictive_r_squared) &&
+  diagnostics$supported <- is.finite(diagnostics$deviance_explained) &&
+    diagnostics$deviance_explained >= 0.5 &&
+    is.finite(diagnostics$adjusted_r_squared) &&
+    diagnostics$adjusted_r_squared >= 0.5 &&
+    is.finite(diagnostics$predictive_r_squared) &&
     diagnostics$predictive_r_squared >= 0.5 &&
     (is.na(diagnostics$k_p_value) || diagnostics$k_p_value >= 0.05) &&
     boundary_fraction <= 0.5
   reasons <- character()
+  if (!is.finite(diagnostics$deviance_explained) || diagnostics$deviance_explained < 0.5) {
+    reasons <- c(reasons, "deviance explained is below 0.5")
+  }
+  if (!is.finite(diagnostics$adjusted_r_squared) || diagnostics$adjusted_r_squared < 0.5) {
+    reasons <- c(reasons, "adjusted R² is below 0.5")
+  }
   if (!is.finite(diagnostics$predictive_r_squared) || diagnostics$predictive_r_squared < 0.5) {
     reasons <- c(reasons, "leave-one-run-out predictive R² is below 0.5")
   }
@@ -539,6 +549,111 @@ make_surface_response_3d <- function(model_result) {
   ))
 }
 
+model_fit_warning_message <- function(model_result) {
+  if (is.null(model_result) || !identical(model_result$status, "success")) {
+    message <- if (is.null(model_result$message)) {
+      "The fitted response is unavailable."
+    } else model_result$message
+    return(paste(message, "Raw and extracted observations remain available."))
+  }
+  diagnostics <- model_result$diagnostics
+  diagnostic_value <- function(name) {
+    if (is.null(diagnostics) || !name %in% names(diagnostics) || length(diagnostics[[name]]) == 0L) {
+      return(NA_real_)
+    }
+    suppressWarnings(as.numeric(diagnostics[[name]][[1]]))
+  }
+  reasons <- character()
+  deviance_explained <- diagnostic_value("deviance_explained")
+  if (!is.finite(deviance_explained) || deviance_explained < 0.5) {
+    value <- if (is.finite(deviance_explained)) sprintf("%.2f", deviance_explained) else "unavailable"
+    reasons <- c(reasons, sprintf(
+      "deviance explained = %s (minimum 0.50)", value
+    ))
+  }
+  adjusted_r_squared <- diagnostic_value("adjusted_r_squared")
+  if (!is.finite(adjusted_r_squared) || adjusted_r_squared < 0.5) {
+    value <- if (is.finite(adjusted_r_squared)) sprintf("%.2f", adjusted_r_squared) else "unavailable"
+    reasons <- c(reasons, sprintf(
+      "adjusted R² = %s (minimum 0.50)", value
+    ))
+  }
+  predictive_r_squared <- diagnostic_value("predictive_r_squared")
+  if (!is.finite(predictive_r_squared) || predictive_r_squared < 0.5) {
+    value <- if (is.finite(predictive_r_squared)) sprintf("%.2f", predictive_r_squared) else "unavailable"
+    reasons <- c(reasons, sprintf(
+      "leave-one-run-out predictive R² = %s (minimum 0.50)", value
+    ))
+  }
+  k_p_value <- diagnostic_value("k_p_value")
+  if (is.finite(k_p_value) && k_p_value < 0.05) {
+    reasons <- c(reasons, sprintf(
+      "GAM basis-check p-value = %.3f (minimum 0.05)", k_p_value
+    ))
+  }
+  boundary_fraction <- diagnostic_value("boundary_optimum_proportion")
+  if (is.finite(boundary_fraction) && boundary_fraction > 0.5) {
+    reasons <- c(reasons, sprintf(
+      "boundary optima = %.0f%% (maximum 50%%)", 100 * boundary_fraction
+    ))
+  }
+  if (length(reasons) == 0L) {
+    reasons <- "one or more model-quality checks were not adequate"
+  }
+  paste0(
+    "Fitted outputs are hidden because model quality is too low: ",
+    paste(reasons, collapse = "; "),
+    ". Raw and extracted observations remain available."
+  )
+}
+
+response_model_section_ui <- function(ns, model_result = NULL) {
+  if (is.null(model_result)) {
+    return(bslib::card(
+      bslib::card_header("Fitted response"),
+      alert_ui("Run the analysis to fit the exploratory response model.", "info")
+    ))
+  }
+  if (!identical(model_result$status, "success") || !isTRUE(model_result$supported)) {
+    return(bslib::card(
+      bslib::card_header("Fitted response not shown"),
+      alert_ui(model_fit_warning_message(model_result), "warning")
+    ))
+  }
+  shiny::tagList(
+    shiny::div(
+      class = "response-two-column",
+      bslib::card(
+        bslib::card_header("Modeled A versus Tleaf at PPFD slices"),
+        plotly::plotlyOutput(ns("temperature_plot"), height = "520px")
+      ),
+      bslib::card(
+        bslib::card_header("GAM surface within observed support"),
+        plotly::plotlyOutput(ns("surface_3d"), height = "600px")
+      )
+    ),
+    bslib::card(
+      bslib::card_header("Optima and ≥90% near-optimal ranges"),
+      shiny::uiOutput(ns("optima_table"))
+    )
+  )
+}
+
+response_download_buttons_ui <- function(ns, model_result = NULL) {
+  supported <- !is.null(model_result) &&
+    identical(model_result$status, "success") &&
+    isTRUE(model_result$supported)
+  shiny::div(
+    class = "download-grid",
+    shiny::downloadButton(ns("download_steps"), "Extracted steps"),
+    if (supported) shiny::downloadButton(ns("download_predictions"), "Model predictions") else NULL,
+    if (supported) shiny::downloadButton(ns("download_optima"), "Optima") else NULL,
+    if (!is.null(model_result) && identical(model_result$status, "success")) {
+      shiny::downloadButton(ns("download_diagnostics"), "Diagnostics")
+    } else NULL
+  )
+}
+
 simple_data_table_ui <- function(data, digits = 3L) {
   if (is.null(data) || nrow(data) == 0L) return(alert_ui("No rows to display.", "info"))
   display <- data
@@ -632,27 +747,13 @@ response_main_ui <- function(id) {
     shiny::div(
       class = "response-two-column",
       bslib::card(bslib::card_header("Observed A versus measured PPFD"), plotly::plotlyOutput(ns("light_plot"), height = "520px")),
-      bslib::card(bslib::card_header("Modeled A versus Tleaf at PPFD slices"), plotly::plotlyOutput(ns("temperature_plot"), height = "520px"))
+      bslib::card(bslib::card_header("Raw extracted landscape"), plotly::plotlyOutput(ns("raw_3d"), height = "520px"))
     ),
-    bslib::card(
-      bslib::card_header("Optima and ≥90% near-optimal ranges"),
-      shiny::uiOutput(ns("optima_table"))
-    ),
-    shiny::div(
-      class = "response-two-column",
-      bslib::card(bslib::card_header("Raw extracted landscape"), plotly::plotlyOutput(ns("raw_3d"), height = "600px")),
-      bslib::card(bslib::card_header("GAM surface within observed support"), plotly::plotlyOutput(ns("surface_3d"), height = "600px"))
-    ),
+    shiny::uiOutput(ns("model_section")),
     bslib::card(
       bslib::card_header("Model diagnostics"),
       shiny::uiOutput(ns("diagnostics")),
-      shiny::div(
-        class = "download-grid",
-        shiny::downloadButton(ns("download_steps"), "Extracted steps"),
-        shiny::downloadButton(ns("download_predictions"), "Model predictions"),
-        shiny::downloadButton(ns("download_optima"), "Optima"),
-        shiny::downloadButton(ns("download_diagnostics"), "Diagnostics")
-      )
+      shiny::uiOutput(ns("download_buttons"))
     )
   )
 }
@@ -846,20 +947,19 @@ response_analysis_server <- function(
         alert_ui(if (identical(mode, "filters")) {
           "Choose a species and press Run analysis. Good-quality runs are selected by default."
         } else {
-          "Choose runs directly or apply a local-analysis preset, then press Run analysis."
+          "Choose runs directly or apply a First Analysis preset, then press Run analysis."
         }, "info"),
         source_notes
       ))
       model <- value$model
       if (!identical(model$status, "success")) return(alert_ui(model$message, "warning"))
-      level <- if (isTRUE(model$supported)) "info" else "warning"
       shiny::tagList(
         source_notes,
         if (length(unique(value$selection$species[nzchar(value$selection$species)])) > 1L) {
           alert_ui("The manual selection contains multiple species; the exploratory GAM pools them into one response surface.", "warning")
         },
         alert_ui(model$coverage$summary$message, "info"),
-        alert_ui(model$diagnostics$interpretation, level),
+        if (isTRUE(model$supported)) alert_ui(model$diagnostics$interpretation, "info") else NULL,
         if (length(value$errors)) alert_ui(sprintf(
           "%d selected file(s) could not be loaded and are reported separately.", length(value$errors)
         ), "warning")
@@ -889,6 +989,10 @@ response_analysis_server <- function(
       value <- result()
       if (is.null(value)) plotly::plotly_empty(type = "scatter3d", mode = "markers") else make_raw_response_3d(value$steps)
     })
+    output$model_section <- shiny::renderUI({
+      value <- result()
+      response_model_section_ui(session$ns, if (is.null(value)) NULL else value$model)
+    })
     output$surface_3d <- plotly::renderPlotly({
       value <- result()
       if (is.null(value)) plotly::plotly_empty(type = "scatter3d", mode = "markers") else make_surface_response_3d(value$model)
@@ -909,6 +1013,10 @@ response_analysis_server <- function(
         if (nrow(value$model$k_check)) simple_data_table_ui(value$model$k_check) else NULL
       )
     })
+    output$download_buttons <- shiny::renderUI({
+      value <- result()
+      response_download_buttons_ui(session$ns, if (is.null(value)) NULL else value$model)
+    })
 
     csv_download <- function(filename, getter) {
       shiny::downloadHandler(
@@ -920,7 +1028,7 @@ response_analysis_server <- function(
       shiny::req(result()); result()$steps
     })
     output$download_predictions <- csv_download("walz-model-predictions.csv", function() {
-      shiny::req(result(), identical(result()$model$status, "success")); result()$model$grid
+      shiny::req(result(), identical(result()$model$status, "success"), result()$model$supported); result()$model$grid
     })
     output$download_optima <- csv_download("walz-optima.csv", function() {
       shiny::req(result(), identical(result()$model$status, "success"), result()$model$supported); result()$model$optima$all
