@@ -640,7 +640,6 @@ quality_control_server <- function(
         current, input$selected_run, selected_run_choice_values()
       )
       if (!isTRUE(state$update)) return()
-      shiny::freezeReactiveValue(input, "selected_run")
       shiny::updateSelectizeInput(
         session, "selected_run", choices = state$choices,
         selected = state$selected, server = TRUE
