@@ -113,6 +113,8 @@ test_that("response line plots expose continuous color legends", {
   actual_line_colours <- vapply(observed$x$data, function(trace) trace$line$color, character(1))
   expect_equal(toupper(actual_line_colours), toupper(expected_line_colours))
   expect_gt(length(unique(actual_line_colours)), 1L)
+  expect_equal(toupper(walz_tleaf_colour(min(limits), limits)), "#2166AC")
+  expect_equal(toupper(walz_tleaf_colour(max(limits), limits)), "#B2182B")
 
   model <- fit_response_gam(steps, grid_size = 30L)
   model$supported <- TRUE

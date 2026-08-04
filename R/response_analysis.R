@@ -401,7 +401,7 @@ run_response_job <- function(
 }
 
 WALZ_TLEAF_PALETTE <- c(
-  "#B2182B", "#EF8A62", "#FDDBC7", "#D1E5F0", "#2166AC"
+  "#2166AC", "#D1E5F0", "#FDDBC7", "#EF8A62", "#B2182B"
 )
 
 walz_tleaf_colorscale <- function() {
