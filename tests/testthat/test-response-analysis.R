@@ -15,6 +15,34 @@ make_response_steps <- function(run_count = 5L, light_count = 6L) {
   do.call(rbind, rows)
 }
 
+make_response_audit_runs <- function() {
+  start <- as.POSIXct("2026-07-15 09:00:00", tz = "Europe/Zurich")
+  positive_raw <- data.frame(
+    Datetime = start + seq(0, 6) * 60,
+    .elapsed_minutes = seq(0, 6),
+    A = c(-1, 0, 1, 2, 4, 3, 2),
+    stringsAsFactors = FALSE
+  )
+  positive_summary <- data.frame(
+    step_id = 1:2,
+    window_start = start + c(0, 3) * 60,
+    window_end = start + c(2, 6) * 60,
+    A_mean = c(2, 4), A_sd = c(0.4, 0.8),
+    PPFD_mean = c(100, 500), coverage = c(1, 0.95),
+    stringsAsFactors = FALSE
+  )
+  negative_raw <- data.frame(
+    Datetime = start + seq(0, 3) * 60,
+    .elapsed_minutes = seq(0, 3),
+    A = c(-4, -3, -2, -1),
+    stringsAsFactors = FALSE
+  )
+  list(
+    `run-positive` = list(raw = positive_raw, summary = positive_summary),
+    `run-negative` = list(raw = negative_raw, summary = positive_summary[1, , drop = FALSE])
+  )
+}
+
 if (!exists("alert_ui", envir = environment(response_model_notice_ui), inherits = FALSE)) {
   assign(
     "alert_ui",
@@ -148,6 +176,45 @@ test_that("response slices are arranged above the raw and fitted landscapes", {
   expect_true(all(positions > 0L))
   expect_true(all(diff(positions) > 0L))
   expect_equal(lengths(regmatches(html, gregexpr("response-two-column", html, fixed = TRUE))), 2L)
+  expect_lt(
+    regexpr("GAM surface within observed support", html, fixed = TRUE)[[1]],
+    regexpr("Extraction audit", html, fixed = TRUE)[[1]]
+  )
+  expect_lt(
+    regexpr("analysis-normalized_audit_section", html, fixed = TRUE)[[1]],
+    regexpr("Extraction audit", html, fixed = TRUE)[[1]]
+  )
+  expect_lt(
+    regexpr("Extraction audit", html, fixed = TRUE)[[1]],
+    regexpr("Model theory", html, fixed = TRUE)[[1]]
+  )
+})
+
+test_that("raw response audit is max-normalized with window means and SD", {
+  prepared <- prepare_normalized_response_audit(make_response_audit_runs())
+  expect_equal(prepared$run_ids, "run-positive")
+  expect_equal(max(prepared$raw$A_normalized, na.rm = TRUE), 1)
+  expect_equal(unique(prepared$raw$positive_max), 4)
+  expect_equal(prepared$windows$A_mean_normalized, c(0.5, 1))
+  expect_equal(prepared$windows$A_sd_normalized, c(0.1, 0.2))
+  expect_equal(prepared$windows$window_start, c(0, 3))
+  expect_equal(prepared$windows$window_end, c(2, 6))
+  expect_equal(
+    prepared$windows$window_type,
+    c("three minutes before next light step", "final three minutes of terminal step")
+  )
+  expect_true(any(grepl("no positive A maximum", prepared$warnings, fixed = TRUE)))
+
+  widget <- suppressWarnings(make_normalized_response_audit_plot(prepared))
+  expect_s3_class(widget, "plotly")
+  expect_gt(length(plotly::plotly_build(widget)$x$data), 0L)
+  section_html <- htmltools::renderTags(
+    response_normalized_audit_section_ui(shiny::NS("analysis"), prepared)
+  )$html
+  expect_match(section_html, "Max-normalized raw A and extraction windows", fixed = TRUE)
+  expect_match(section_html, "thick green lines", fixed = TRUE)
+  expect_match(section_html, "mean ± 1 SD", fixed = TRUE)
+  expect_match(section_html, "analysis-normalized_audit_plot", fixed = TRUE)
 })
 
 test_that("poor model fits show one metric warning and retain fitted outputs", {

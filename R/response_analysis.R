@@ -372,6 +372,7 @@ run_response_job <- function(
     }
   }
   new_extractions <- list()
+  audit_runs <- list()
   extractions <- lapply(seq_len(nrow(records)), function(index) {
     record <- records[index, , drop = FALSE]
     id_value <- record$id[[1]]
@@ -382,6 +383,11 @@ run_response_job <- function(
       extraction <- extract_light_steps(value, measurement_run_id(record$name[[1]]))
       new_extractions[[id_value]] <<- extraction
     }
+    run_id <- measurement_run_id(record$name[[1]])
+    audit_runs[[run_id]] <<- list(
+      raw = extraction$raw,
+      summary = extraction$summary
+    )
     extraction$summary$id <- record$id[[1]]
     extraction$summary$name <- record$name[[1]]
     extraction$summary$species <- catalog$species[catalog$id == record$id[[1]]][[1]]
@@ -396,7 +402,8 @@ run_response_job <- function(
   )
   list(
     steps = steps, model = model, batch_results = batch_results,
-    new_extractions = new_extractions, errors = errors, selection = catalog
+    new_extractions = new_extractions, errors = errors, selection = catalog,
+    audit_runs = audit_runs
   )
 }
 
@@ -548,6 +555,160 @@ make_surface_response_3d <- function(model_result) {
     xaxis = list(title = "Tleaf (°C)"),
     yaxis = list(title = "PPFD"), zaxis = list(title = "A")
   ))
+}
+
+prepare_normalized_response_audit <- function(audit_runs) {
+  empty_raw <- data.frame(
+    run_id = character(), elapsed_minutes = numeric(), A_raw = numeric(),
+    A_normalized = numeric(), positive_max = numeric(), stringsAsFactors = FALSE
+  )
+  empty_windows <- data.frame(
+    run_id = character(), step_id = integer(), window_start = numeric(),
+    window_end = numeric(), window_midpoint = numeric(), A_mean = numeric(),
+    A_sd = numeric(), A_mean_normalized = numeric(), A_sd_normalized = numeric(),
+    PPFD_mean = numeric(), coverage = numeric(), window_type = character(),
+    stringsAsFactors = FALSE
+  )
+  if (is.null(audit_runs) || length(audit_runs) == 0L) {
+    return(list(raw = empty_raw, windows = empty_windows, warnings = character(), run_ids = character()))
+  }
+
+  raw_rows <- list()
+  window_rows <- list()
+  warnings <- character()
+  included_runs <- character()
+  for (run_id in names(audit_runs)) {
+    extraction <- audit_runs[[run_id]]
+    raw <- extraction$raw
+    summary <- extraction$summary
+    if (
+      is.null(raw) || nrow(raw) == 0L ||
+        !all(c("Datetime", ".elapsed_minutes", "A") %in% names(raw))
+    ) {
+      warnings <- c(warnings, sprintf("%s has no usable raw A timeseries.", run_id))
+      next
+    }
+    positive <- suppressWarnings(as.numeric(raw$A))
+    positive <- positive[is.finite(positive) & positive > 0]
+    if (length(positive) == 0L) {
+      warnings <- c(warnings, sprintf(
+        "%s has no positive A maximum and cannot be max-normalized.", run_id
+      ))
+      next
+    }
+    positive_max <- max(positive)
+    included_runs <- c(included_runs, run_id)
+    raw_rows[[run_id]] <- data.frame(
+      run_id = run_id,
+      elapsed_minutes = suppressWarnings(as.numeric(raw$.elapsed_minutes)),
+      A_raw = suppressWarnings(as.numeric(raw$A)),
+      A_normalized = suppressWarnings(as.numeric(raw$A)) / positive_max,
+      positive_max = positive_max,
+      stringsAsFactors = FALSE
+    )
+    if (is.null(summary) || nrow(summary) == 0L) next
+    start_time <- min(raw$Datetime, na.rm = TRUE)
+    window_start <- as.numeric(difftime(summary$window_start, start_time, units = "mins"))
+    window_end <- as.numeric(difftime(summary$window_end, start_time, units = "mins"))
+    final_step <- max(summary$step_id, na.rm = TRUE)
+    window_rows[[run_id]] <- data.frame(
+      run_id = run_id,
+      step_id = summary$step_id,
+      window_start = window_start,
+      window_end = window_end,
+      window_midpoint = (window_start + window_end) / 2,
+      A_mean = summary$A_mean,
+      A_sd = summary$A_sd,
+      A_mean_normalized = summary$A_mean / positive_max,
+      A_sd_normalized = summary$A_sd / positive_max,
+      PPFD_mean = summary$PPFD_mean,
+      coverage = summary$coverage,
+      window_type = ifelse(
+        summary$step_id == final_step,
+        "final three minutes of terminal step",
+        "three minutes before next light step"
+      ),
+      stringsAsFactors = FALSE
+    )
+  }
+  raw_data <- if (length(raw_rows)) do.call(rbind, raw_rows) else empty_raw
+  window_data <- if (length(window_rows)) do.call(rbind, window_rows) else empty_windows
+  if (length(included_runs)) {
+    raw_data$run_id <- factor(raw_data$run_id, levels = included_runs)
+    window_data$run_id <- factor(window_data$run_id, levels = included_runs)
+  }
+  list(
+    raw = raw_data, windows = window_data,
+    warnings = unique(warnings), run_ids = included_runs
+  )
+}
+
+normalized_response_audit_columns <- function(run_count) {
+  if (run_count > 12L) 3L else 2L
+}
+
+make_normalized_response_audit_plot <- function(prepared, columns = NULL) {
+  if (is.null(prepared) || nrow(prepared$raw) == 0L) {
+    return(plotly::plotly_empty(type = "scatter", mode = "lines"))
+  }
+  run_count <- length(prepared$run_ids)
+  if (is.null(columns)) columns <- normalized_response_audit_columns(run_count)
+  mean_colour <- WALZ_DARK2[[1]]
+  plot <- ggplot2::ggplot(
+    prepared$raw,
+    ggplot2::aes(x = elapsed_minutes, y = A_normalized, group = run_id)
+  ) +
+    ggplot2::geom_hline(yintercept = 0, colour = "#a8b0aa", linewidth = 0.3) +
+    ggplot2::geom_rect(
+      data = prepared$windows,
+      ggplot2::aes(
+        xmin = window_start, xmax = window_end,
+        ymin = -Inf, ymax = Inf
+      ),
+      inherit.aes = FALSE, fill = mean_colour, alpha = 0.055
+    ) +
+    ggplot2::geom_line(colour = "#56616b", linewidth = 0.38, na.rm = TRUE) +
+    ggplot2::geom_segment(
+      data = prepared$windows,
+      ggplot2::aes(
+        x = window_start, xend = window_end,
+        y = A_mean_normalized, yend = A_mean_normalized
+      ),
+      inherit.aes = FALSE, colour = mean_colour, linewidth = 1.7,
+      lineend = "round", na.rm = TRUE
+    ) +
+    ggplot2::geom_errorbar(
+      data = prepared$windows,
+      ggplot2::aes(
+        x = window_midpoint,
+        ymin = A_mean_normalized - A_sd_normalized,
+        ymax = A_mean_normalized + A_sd_normalized
+      ),
+      inherit.aes = FALSE, colour = mean_colour, alpha = 0.58,
+      linewidth = 0.55, width = 0.5, na.rm = TRUE
+    ) +
+    ggplot2::facet_wrap(
+      stats::as.formula("~run_id"), ncol = columns, scales = "free_x"
+    ) +
+    ggplot2::labs(
+      x = "Elapsed time from run start (minutes)",
+      y = "A / positive run maximum"
+    ) +
+    ggplot2::theme_minimal(base_size = 11) +
+    ggplot2::theme(
+      legend.position = "none",
+      panel.grid.minor = ggplot2::element_blank(),
+      panel.grid.major = ggplot2::element_line(colour = "#e7ebe7", linewidth = 0.3),
+      strip.background = ggplot2::element_rect(fill = "#eef4ed", colour = NA),
+      strip.text = ggplot2::element_text(colour = "#243228", face = "bold"),
+      axis.title = ggplot2::element_text(colour = "#34443a"),
+      axis.text = ggplot2::element_text(colour = "#4b5563")
+    )
+  plotly::ggplotly(plot, dynamicTicks = TRUE) |>
+    plotly::layout(
+      hovermode = "closest",
+      margin = list(l = 70, r = 25, t = 35, b = 65)
+    )
 }
 
 model_fit_warning_message <- function(model_result) {
@@ -748,15 +909,37 @@ response_model_theory_ui <- function() {
   )
 }
 
+response_normalized_audit_section_ui <- function(ns, prepared = NULL) {
+  if (is.null(prepared)) return(NULL)
+  warning_ui <- if (length(prepared$warnings)) {
+    alert_ui(paste(prepared$warnings, collapse = " "), "warning")
+  } else NULL
+  if (nrow(prepared$raw) == 0L) {
+    return(bslib::card(
+      bslib::card_header("Max-normalized raw A and extraction windows"),
+      warning_ui,
+      alert_ui("No selected run could be max-normalized.", "warning")
+    ))
+  }
+  columns <- normalized_response_audit_columns(length(prepared$run_ids))
+  rows <- ceiling(length(prepared$run_ids) / columns)
+  height <- max(440L, 265L * rows + 90L)
+  bslib::card(
+    bslib::card_header("Max-normalized raw A and extraction windows"),
+    shiny::p(
+      class = "control-help",
+      "Each facet is one selected run. The grey trace is raw A divided by that run's positive maximum. Pale bands mark extraction windows; thick green lines show the three-minute means and the lighter vertical bars show mean ± 1 SD. The terminal step uses its final three minutes even though no later light jump follows."
+    ),
+    warning_ui,
+    plotly::plotlyOutput(ns("normalized_audit_plot"), height = sprintf("%dpx", height))
+  )
+}
+
 response_main_ui <- function(id) {
   ns <- shiny::NS(id)
   shiny::div(
     class = "response-analysis-tab",
     shiny::uiOutput(ns("status")),
-    bslib::card(
-      bslib::card_header("Extraction audit"),
-      shiny::uiOutput(ns("extraction_table"))
-    ),
     shiny::uiOutput(ns("model_notice")),
     shiny::div(
       class = "response-two-column",
@@ -773,6 +956,11 @@ response_main_ui <- function(id) {
       bslib::card_header("Model diagnostics"),
       shiny::uiOutput(ns("diagnostics")),
       shiny::uiOutput(ns("download_buttons"))
+    ),
+    shiny::uiOutput(ns("normalized_audit_section")),
+    bslib::card(
+      bslib::card_header("Extraction audit"),
+      shiny::uiOutput(ns("extraction_table"))
     ),
     response_model_theory_ui()
   )
@@ -941,6 +1129,12 @@ response_analysis_server <- function(
       )
     }, ignoreInit = TRUE)
 
+    normalized_audit <- shiny::reactive({
+      value <- result()
+      if (is.null(value)) return(NULL)
+      prepare_normalized_response_audit(value$audit_runs)
+    })
+
     output$status <- shiny::renderUI({
       if (running()) return(alert_ui("Loading selected runs and fitting the exploratory model in the background …", "info"))
       if (!is.null(last_error())) return(alert_ui(last_error(), "warning"))
@@ -1040,6 +1234,19 @@ response_analysis_server <- function(
     output$download_buttons <- shiny::renderUI({
       value <- result()
       response_download_buttons_ui(session$ns, if (is.null(value)) NULL else value$model)
+    })
+    output$normalized_audit_section <- shiny::renderUI({
+      response_normalized_audit_section_ui(session$ns, normalized_audit())
+    })
+    output$normalized_audit_plot <- plotly::renderPlotly({
+      prepared <- normalized_audit()
+      if (is.null(prepared)) {
+        return(plotly::plotly_empty(type = "scatter", mode = "lines"))
+      }
+      make_normalized_response_audit_plot(
+        prepared,
+        columns = normalized_response_audit_columns(length(prepared$run_ids))
+      )
     })
 
     csv_download <- function(filename, getter) {
