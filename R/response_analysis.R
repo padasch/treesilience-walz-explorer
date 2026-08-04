@@ -411,6 +411,8 @@ WALZ_TLEAF_PALETTE <- c(
   "#2166AC", "#D1E5F0", "#FDDBC7", "#EF8A62", "#B2182B"
 )
 
+WALZ_PPFD_PALETTE <- grDevices::hcl.colors(5L, "YlOrRd", rev = TRUE)
+
 walz_tleaf_colorscale <- function() {
   Map(
     function(position, colour) c(position, colour),
@@ -431,6 +433,43 @@ walz_tleaf_colour <- function(temperature, limits) {
   ramp <- grDevices::colorRamp(WALZ_TLEAF_PALETTE)
   rgb <- ramp(position)
   grDevices::rgb(rgb[[1]], rgb[[2]], rgb[[3]], maxColorValue = 255)
+}
+
+walz_ppfd_colorscale <- function() {
+  Map(
+    function(position, colour) c(position, colour),
+    seq(0, 1, length.out = length(WALZ_PPFD_PALETTE)),
+    WALZ_PPFD_PALETTE
+  )
+}
+
+walz_ppfd_colour <- function(ppfd, limits) {
+  if (length(limits) != 2L || any(!is.finite(limits))) return("#7F7F7F")
+  span <- diff(limits)
+  position <- if (!is.finite(span) || span <= 0) {
+    0.5
+  } else {
+    (ppfd - limits[[1]]) / span
+  }
+  position <- max(0, min(1, position))
+  ramp <- grDevices::colorRamp(WALZ_PPFD_PALETTE)
+  rgb <- ramp(position)
+  grDevices::rgb(rgb[[1]], rgb[[2]], rgb[[3]], maxColorValue = 255)
+}
+
+add_ppfd_colorbar <- function(plot, limits, title, tickvals, x, y) {
+  plotly::add_trace(
+    plot,
+    x = rep(x, 2L), y = rep(y, 2L),
+    type = "scatter", mode = "markers",
+    marker = list(
+      color = limits, size = 0.1, opacity = 0,
+      colorscale = walz_ppfd_colorscale(),
+      cmin = limits[[1]], cmax = limits[[2]], showscale = TRUE,
+      colorbar = list(title = list(text = title), tickvals = tickvals)
+    ),
+    hoverinfo = "skip", showlegend = FALSE
+  )
 }
 
 response_ppfd_slice_targets <- function(steps, bin_width = 50, maximum = 10L) {
@@ -519,7 +558,6 @@ make_observed_temperature_slice_plot <- function(steps) {
   data <- prepare_observed_temperature_slices(steps)
   if (nrow(data) == 0L) return(plotly::plotly_empty(type = "scatter", mode = "lines"))
   slices <- sort(unique(data$PPFD_slice))
-  colours <- grDevices::hcl.colors(length(slices), "YlOrRd", rev = TRUE)
   light_range <- range(slices, finite = TRUE)
   if (diff(light_range) == 0) light_range <- light_range + c(-0.5, 0.5)
   plot <- plotly::plot_ly()
@@ -527,16 +565,16 @@ make_observed_temperature_slice_plot <- function(steps) {
     slice <- slices[[index]]
     slice_data <- data[data$PPFD_slice == slice, , drop = FALSE]
     slice_data <- slice_data[order(slice_data$Tleaf_mean), , drop = FALSE]
+    colour <- walz_ppfd_colour(slice, light_range)
     plot <- plotly::add_trace(
       plot, x = slice_data$Tleaf_mean, y = slice_data$A_mean,
       type = "scatter", mode = "lines+markers",
       name = sprintf("PPFD ≈ %.0f", slice),
-      line = list(color = colours[[index]], width = 2),
+      line = list(color = colour, width = 2),
       marker = list(
-        color = rep(slice, nrow(slice_data)), size = 5,
-        colorscale = "YlOrRd", cmin = light_range[[1]], cmax = light_range[[2]],
-        showscale = index == 1L,
-        colorbar = list(title = list(text = "PPFD slice"), tickvals = slices)
+        color = colour, size = 5,
+        line = list(color = colour, width = 1),
+        showscale = FALSE
       ),
       text = sprintf(
         "%s<br>PPFD slice %.0f<br>Measured PPFD %.1f<br>Tleaf %.2f°C<br>A %.3f",
@@ -546,6 +584,10 @@ make_observed_temperature_slice_plot <- function(steps) {
       hovertemplate = "%{text}<extra></extra>", showlegend = FALSE
     )
   }
+  plot <- add_ppfd_colorbar(
+    plot, light_range, "PPFD slice", slices,
+    x = data$Tleaf_mean[[1]], y = data$A_mean[[1]]
+  )
   plotly::layout(
     plot, xaxis = list(title = "Leaf temperature (°C)"),
     yaxis = list(title = "A"), margin = list(r = 105)
@@ -604,24 +646,18 @@ make_temperature_slice_plot <- function(model_result) {
   }
   grid <- model_result$grid
   slices <- response_ppfd_slice_targets(model_result$data)
-  colours <- grDevices::hcl.colors(length(slices), "YlOrRd", rev = TRUE)
   light_range <- range(slices, finite = TRUE)
   if (diff(light_range) == 0) light_range <- light_range + c(-0.5, 0.5)
   plot <- plotly::plot_ly()
   for (index in seq_along(slices)) {
     light <- unique(grid$PPFD_mean)[which.min(abs(unique(grid$PPFD_mean) - slices[[index]]))]
     data <- grid[abs(grid$PPFD_mean - light) < 1e-8 & is.finite(grid$predicted_A), , drop = FALSE]
+    colour <- walz_ppfd_colour(slices[[index]], light_range)
     plot <- plotly::add_trace(
       plot, x = data$Tleaf_mean, y = data$predicted_A,
-      type = "scatter", mode = "lines+markers",
+      type = "scatter", mode = "lines",
       name = sprintf("PPFD %.0f", slices[[index]]),
-      line = list(color = colours[[index]], width = 2),
-      marker = list(
-        color = rep(slices[[index]], nrow(data)), size = 4,
-        colorscale = "YlOrRd", cmin = light_range[[1]], cmax = light_range[[2]],
-        showscale = index == 1L,
-        colorbar = list(title = list(text = "Measured PPFD"), tickvals = slices)
-      ),
+      line = list(color = colour, width = 2),
       text = sprintf(
         "PPFD %.1f<br>Tleaf %.2f°C<br>Modeled A %.3f",
         slices[[index]], data$Tleaf_mean, data$predicted_A
@@ -629,6 +665,11 @@ make_temperature_slice_plot <- function(model_result) {
       hovertemplate = "%{text}<extra></extra>", showlegend = FALSE
     )
   }
+  visible_grid <- grid[is.finite(grid$predicted_A), , drop = FALSE]
+  plot <- add_ppfd_colorbar(
+    plot, light_range, "Measured PPFD", slices,
+    x = visible_grid$Tleaf_mean[[1]], y = visible_grid$predicted_A[[1]]
+  )
   plotly::layout(
     plot, xaxis = list(title = "Leaf temperature (°C)"),
     yaxis = list(title = "Modeled A"),

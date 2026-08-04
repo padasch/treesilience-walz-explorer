@@ -147,16 +147,34 @@ test_that("response line plots expose continuous color legends", {
   observed_temperature <- suppressMessages(plotly::plotly_build(
     make_observed_temperature_slice_plot(steps)
   ))
-  expect_equal(length(observed_temperature$x$data), 6L)
-  expect_true(isTRUE(observed_temperature$x$data[[1]]$marker$showscale))
+  expect_equal(length(observed_temperature$x$data), 7L)
+  observed_temperature_lines <- observed_temperature$x$data[seq_len(6L)]
+  observed_temperature_scale <- observed_temperature$x$data[[7L]]
+  expect_true(isTRUE(observed_temperature_scale$marker$showscale))
   expect_equal(
-    observed_temperature$x$data[[1]]$marker$colorbar$title$text,
+    observed_temperature_scale$marker$colorbar$title$text,
     "PPFD slice"
   )
   expect_true(all(vapply(
-    observed_temperature$x$data,
+    observed_temperature_lines,
     function(trace) !isTRUE(trace$showlegend), logical(1)
   )))
+  observed_ppfd <- vapply(
+    observed_temperature_lines,
+    function(trace) as.numeric(sub("PPFD ≈ ", "", trace$name)), numeric(1)
+  )
+  observed_ppfd_limits <- range(observed_ppfd)
+  expected_ppfd_colours <- vapply(
+    observed_ppfd, walz_ppfd_colour, character(1), limits = observed_ppfd_limits
+  )
+  observed_line_colours <- vapply(
+    observed_temperature_lines, function(trace) trace$line$color, character(1)
+  )
+  observed_marker_colours <- vapply(
+    observed_temperature_lines, function(trace) trace$marker$color, character(1)
+  )
+  expect_equal(toupper(observed_line_colours), toupper(expected_ppfd_colours))
+  expect_equal(toupper(observed_marker_colours), toupper(observed_line_colours))
 
   model <- fit_response_gam(steps, grid_size = 30L)
   model$supported <- TRUE
@@ -175,8 +193,15 @@ test_that("response line plots expose continuous color legends", {
   ), fixed = TRUE)))
 
   slices <- suppressMessages(plotly::plotly_build(make_temperature_slice_plot(model)))
-  expect_true(isTRUE(slices$x$data[[1]]$marker$showscale))
-  expect_equal(slices$x$data[[1]]$marker$colorbar$title$text, "Measured PPFD")
+  slice_lines <- slices$x$data[seq_len(length(slices$x$data) - 1L)]
+  slice_scale <- slices$x$data[[length(slices$x$data)]]
+  expect_true(isTRUE(slice_scale$marker$showscale))
+  expect_equal(slice_scale$marker$colorbar$title$text, "Measured PPFD")
+  expect_true(all(vapply(
+    slice_lines, function(trace) identical(trace$mode, "lines"), logical(1)
+  )))
+  expect_true(identical(slice_scale$mode, "markers"))
+  expect_identical(slice_scale$marker$opacity, 0)
 })
 
 test_that("observed temperature slices use measured values in bounded PPFD bands", {
