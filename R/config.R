@@ -59,10 +59,6 @@ walz_config <- function() {
       "WALZ_METADATA_SHEET_NAME",
       unset = WALZ_DEFAULT_METADATA_SHEET_NAME
     ),
-    service_account_json_b64 = Sys.getenv(
-      "WALZ_GOOGLE_SERVICE_ACCOUNT_JSON_B64",
-      unset = ""
-    ),
     background_workers = workers,
     source_cache_ttl_seconds = 60,
     enable_dew_point_tab = identical(

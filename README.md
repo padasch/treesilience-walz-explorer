@@ -33,7 +33,7 @@ No WALZ measurements, Google credentials, or thesis files are stored in this rep
 - Final-three-minute means for every stable light step, including the terminal step
 - A click-selectable raw audit with A, PPFD, extraction windows, SD, within-window A slope, coverage, completeness, and structural warnings
 - Optional species, plant-ID, and date filters plus a color-matched metadata table
-- Read-only operation by default; optional guarded Google Sheet write-back changes only the selected run's `quality assessment` cell
+- Read-only quality overview; assessments are edited manually in the linked metadata Sheet
 
 ### Response Analysis
 
@@ -69,19 +69,12 @@ The app uses `googledrive::drive_deauth()` for non-interactive access to files t
 - `WALZ_METADATA_SHEET_NAME`: replace the default `Walz Measurement Metadata` tab name
 - `WALZ_ENABLE_DEW_POINT_TAB`: set to `true` only for development review of the disabled calculator
 - `WALZ_BACKGROUND_WORKERS`: background worker count, with a minimum and default of two
-- `WALZ_GOOGLE_SERVICE_ACCOUNT_JSON_B64`: base64-encoded Google service-account JSON for Sheet write-back
 
 Drive listings and public metadata are cached process-wide for 60 seconds. Downloaded measurement and protocol content is cached by Drive file ID and `modifiedTime`; extracted light-step summaries also include extraction settings in their cache key. The Explorer lists measurements first, loads metadata after the first plot, and does not list protocols until the protocol accordion is opened. QC and analysis collections load only on first use in sequential batches of about 12, with concurrent transfers inside each batch and per-file fallback through `googledrive`. “Refresh and show latest” forces the measurement and metadata sources to refresh, while protocol refresh remains deferred unless protocols have already been opened. Data updates do not require a code deployment.
 
-## Quality write-back setup
+## Quality assessment workflow
 
-The public app remains fully usable for read-only review when write-back credentials are absent. To enable the four quality actions, configure this encrypted environment variable in Posit Connect Cloud:
-
-1. `WALZ_GOOGLE_SERVICE_ACCOUNT_JSON_B64`: service-account credentials encoded as base64. Share the metadata Sheet with that service-account email as an editor.
-
-There is currently no reviewer-code gate: when the service-account secret is configured, anyone using the public app can change the quality assessment. The server credentials remain hidden and only the single quality cell is writable through the app.
-
-Before every change, the server re-reads the timestamp and quality columns, requires exactly one exact timestamp match, checks that the loaded quality value has not changed, writes one cell, and verifies the returned value. Automated tests use a fake Sheet client and never write to the production spreadsheet.
+Quality Control is intentionally read-only. It groups curves using the public metadata Sheet and links to that Sheet for manual changes. Refresh the app after editing `quality assessment` to update the Good, Medium, Bad, and Unassessed sections.
 
 ## Response model
 
@@ -107,7 +100,7 @@ dir.create(".Rlib", showWarnings = FALSE)
 install.packages(
   c(
     "shiny", "plotly", "ggplot2", "bslib", "googledrive", "gargle",
-    "curl", "future", "promises", "googlesheets4", "base64enc", "mgcv",
+    "curl", "future", "promises", "mgcv",
     "interp", "later", "rsconnect", "testthat", "htmltools"
   ),
   lib = ".Rlib"

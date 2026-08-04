@@ -1,6 +1,6 @@
 required_packages <- c(
   "shiny", "plotly", "ggplot2", "bslib", "googledrive", "curl",
-  "future", "promises", "googlesheets4", "base64enc", "mgcv", "interp",
+  "future", "promises", "mgcv", "interp",
   "later"
 )
 missing_packages <- required_packages[
@@ -24,7 +24,6 @@ source("R/run_metadata.R", local = TRUE)
 source("R/drive_data.R", local = TRUE)
 source("R/plots.R", local = TRUE)
 source("R/light_steps.R", local = TRUE)
-source("R/sheets_writeback.R", local = TRUE)
 source("R/quality_control.R", local = TRUE)
 source("R/response_analysis.R", local = TRUE)
 
@@ -1524,7 +1523,6 @@ server <- function(input, output, session) {
       if (is.null(index)) data.frame() else index$measurements
     }),
     metadata = shiny::reactive(run_metadata()),
-    set_metadata = function(value) run_metadata(value),
     config = config
   )
 

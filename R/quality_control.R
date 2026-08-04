@@ -316,15 +316,19 @@ quality_metadata_table_ui <- function(catalog, title = "Runs in this view") {
 qc_sidebar_ui <- function(id) {
   ns <- shiny::NS(id)
   shiny::tagList(
-    shiny::h5("Quality Control scope"),
+    shiny::h5("Quality overview"),
     shiny::selectizeInput(ns("species"), "Species", choices = character(), multiple = TRUE),
     shiny::selectizeInput(ns("plant_ids"), "Plant IDs", choices = character(), multiple = TRUE),
     shiny::dateRangeInput(ns("date_range"), "Run date"),
     shiny::p(class = "control-help", "All four quality groups remain visible; these filters control which runs are compared."),
+    shiny::p(
+      class = "control-help",
+      "Quality labels are read from the metadata sheet and are not editable in this app."
+    ),
+    metadata_sheet_link_ui("metadata-card-link"),
     shiny::hr(),
     shiny::h5("Raw-run audit"),
-    shiny::selectizeInput(ns("selected_run"), "Selected run", choices = character()),
-    shiny::uiOutput(ns("review_controls"))
+    shiny::selectizeInput(ns("selected_run"), "Selected run", choices = character())
   )
 }
 
@@ -359,7 +363,6 @@ quality_control_server <- function(
     active,
     measurements,
     metadata,
-    set_metadata,
     config) {
   shiny::moduleServer(id, function(input, output, session) {
     prepared <- shiny::reactiveVal(list())
@@ -560,7 +563,7 @@ quality_control_server <- function(
           tools::toTitleCase(selected$quality)
         )),
         if (selected$metadata_matches != 1L) alert_ui(
-          "Sheet write-back is disabled because this run has no unique metadata row.", "warning"
+          "This run does not have exactly one matching metadata row.", "warning"
         )
       )
     })
@@ -589,55 +592,6 @@ quality_control_server <- function(
       ))
     })
     output$metadata_table <- shiny::renderUI(quality_metadata_table_ui(scoped_catalog()))
-
-    output$review_controls <- shiny::renderUI({
-      if (!sheet_writeback_configured(config)) {
-        return(shiny::tagList(
-          alert_ui("Quality review is read-only because the Google service-account secret is not configured.", "info"),
-          metadata_sheet_link_ui("drive-link")
-        ))
-      }
-      selected <- selected_catalog()
-      if (nrow(selected) != 1L || selected$metadata_matches != 1L) {
-        return(alert_ui("Select a run with exactly one metadata row to assign quality.", "warning"))
-      }
-      shiny::tagList(
-        alert_ui("Quality assessment is open to anyone using this app.", "info"),
-        shiny::div(
-          class = "quality-action-grid",
-          shiny::actionButton(session$ns("set_good"), "Good", class = "btn-success"),
-          shiny::actionButton(session$ns("set_medium"), "Medium", class = "btn-warning"),
-          shiny::actionButton(session$ns("set_bad"), "Bad", class = "btn-danger"),
-          shiny::actionButton(session$ns("set_clear"), "Clear")
-        )
-      )
-    })
-
-    write_quality <- function(value) {
-      selected <- selected_catalog()
-      if (!sheet_writeback_configured(config) || nrow(selected) != 1L || selected$metadata_matches != 1L) return()
-      result <- tryCatch(
-        write_quality_assessment(
-          selected$run_id, value, selected$quality,
-          default_sheet_client(config)
-        ),
-        error = function(error) error
-      )
-      if (inherits(result, "error")) {
-        shiny::showNotification(conditionMessage(result), type = "error", duration = NULL)
-      } else {
-        set_metadata(result$sheet)
-        clear_metadata_cache()
-        shiny::showNotification(sprintf(
-          "%s is now %s.", selected$run_id,
-          ifelse(nzchar(value), tools::toTitleCase(value), "Unassessed")
-        ), type = "message")
-      }
-    }
-    shiny::observeEvent(input$set_good, write_quality("good"), ignoreInit = TRUE)
-    shiny::observeEvent(input$set_medium, write_quality("medium"), ignoreInit = TRUE)
-    shiny::observeEvent(input$set_bad, write_quality("bad"), ignoreInit = TRUE)
-    shiny::observeEvent(input$set_clear, write_quality(""), ignoreInit = TRUE)
 
     list(prepared = prepared, catalog = catalog)
   })

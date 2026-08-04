@@ -332,38 +332,6 @@
         "RemoteSha": "1.1.0"
       }
     },
-    "cellranger": {
-      "Source": "CRAN",
-      "Repository": "https://cloud.r-project.org",
-      "description": {
-        "Package": "cellranger",
-        "Title": "Translate Spreadsheet Cell Ranges to Rows and Columns",
-        "Version": "1.1.0",
-        "Authors@R": "c(\n    person(\"Jennifer\", \"Bryan\", , \"jenny@stat.ubc.ca\", c(\"cre\", \"aut\")),\n    person(\"Hadley\", \"Wickham\", , \"hadley@rstudio.com\", \"ctb\")\n  )",
-        "Description": "Helper functions to work with spreadsheets and the \"A1:D10\" style\n    of cell range specification.",
-        "Depends": "R (>= 3.0.0)",
-        "License": "MIT + file LICENSE",
-        "LazyData": "true",
-        "URL": "https://github.com/rsheets/cellranger",
-        "BugReports": "https://github.com/rsheets/cellranger/issues",
-        "Suggests": "covr, testthat (>= 1.0.0), knitr, rmarkdown",
-        "RoxygenNote": "5.0.1.9000",
-        "VignetteBuilder": "knitr",
-        "Imports": "rematch, tibble",
-        "NeedsCompilation": "no",
-        "Packaged": "2016-07-26 06:50:00 UTC; jenny",
-        "Author": "Jennifer Bryan [cre, aut],\n  Hadley Wickham [ctb]",
-        "Maintainer": "Jennifer Bryan <jenny@stat.ubc.ca>",
-        "Repository": "CRAN",
-        "Date/Publication": "2016-07-27 03:17:48",
-        "Built": "R 4.5.0; ; 2025-04-01 20:32:15 UTC; unix",
-        "RemoteType": "standard",
-        "RemotePkgRef": "cellranger",
-        "RemoteRef": "cellranger",
-        "RemoteRepos": "https://cran.rstudio.com",
-        "RemoteSha": "1.1.0"
-      }
-    },
     "cli": {
       "Source": "CRAN",
       "Repository": "https://cloud.r-project.org",
@@ -1050,41 +1018,6 @@
         "Built": "R 4.5.0; ; 2025-09-10 10:50:39 UTC; unix"
       }
     },
-    "googlesheets4": {
-      "Source": "CRAN",
-      "Repository": "https://cloud.r-project.org",
-      "description": {
-        "Package": "googlesheets4",
-        "Title": "Access Google Sheets using the Sheets API V4",
-        "Version": "1.1.2",
-        "Authors@R": "c(\n    person(\"Jennifer\", \"Bryan\", , \"jenny@posit.co\", role = c(\"cre\", \"aut\"),\n           comment = c(ORCID = \"0000-0002-6983-2759\")),\n    person(\"Posit Software, PBC\", role = c(\"cph\", \"fnd\"))\n  )",
-        "Description": "Interact with Google Sheets through the Sheets API v4\n    <https://developers.google.com/sheets/api>. \"API\" is an acronym for\n    \"application programming interface\"; the Sheets API allows users to\n    interact with Google Sheets programmatically, instead of via a web\n    browser. The \"v4\" refers to the fact that the Sheets API is currently\n    at version 4. This package can read and write both the metadata and\n    the cell data in a Sheet.",
-        "License": "MIT + file LICENSE",
-        "URL": "https://googlesheets4.tidyverse.org,\nhttps://github.com/tidyverse/googlesheets4",
-        "BugReports": "https://github.com/tidyverse/googlesheets4/issues",
-        "Depends": "R (>= 3.6)",
-        "Imports": "cellranger, cli (>= 3.0.0), curl, gargle (>= 1.6.0), glue (>=\n1.3.0), googledrive (>= 2.1.0), httr, ids, lifecycle, magrittr,\nmethods, purrr, rematch2, rlang (>= 1.0.2), tibble (>= 2.1.1),\nutils, vctrs (>= 0.2.3), withr",
-        "Suggests": "readr, rmarkdown, spelling, testthat (>= 3.1.7)",
-        "ByteCompile": "true",
-        "Config/Needs/website": "tidyverse, tidyverse/tidytemplate",
-        "Config/testthat/edition": "3",
-        "Encoding": "UTF-8",
-        "Language": "en-US",
-        "RoxygenNote": "7.3.2.9000",
-        "NeedsCompilation": "no",
-        "Packaged": "2025-09-03 23:00:43 UTC; jenny",
-        "Author": "Jennifer Bryan [cre, aut] (ORCID:\n    <https://orcid.org/0000-0002-6983-2759>),\n  Posit Software, PBC [cph, fnd]",
-        "Maintainer": "Jennifer Bryan <jenny@posit.co>",
-        "Repository": "CRAN",
-        "Date/Publication": "2025-09-03 23:20:02 UTC",
-        "Built": "R 4.5.0; ; 2025-09-05 05:44:57 UTC; unix",
-        "RemoteType": "standard",
-        "RemotePkgRef": "googlesheets4",
-        "RemoteRef": "googlesheets4",
-        "RemoteRepos": "https://cran.rstudio.com",
-        "RemoteSha": "1.1.2"
-      }
-    },
     "gtable": {
       "Source": "CRAN",
       "Repository": "https://cloud.r-project.org",
@@ -1278,36 +1211,6 @@
         "RemoteRef": "httr",
         "RemoteRepos": "https://cran.rstudio.com",
         "RemoteSha": "1.4.8"
-      }
-    },
-    "ids": {
-      "Source": "CRAN",
-      "Repository": "https://cloud.r-project.org",
-      "description": {
-        "Package": "ids",
-        "Title": "Generate Random Identifiers",
-        "Version": "1.0.1",
-        "Authors@R": "person(\"Rich\", \"FitzJohn\", role = c(\"aut\", \"cre\"),\n    email = \"rich.fitzjohn@gmail.com\")",
-        "Description": "Generate random or human readable and pronounceable identifiers.",
-        "License": "MIT + file LICENSE",
-        "URL": "https://github.com/richfitz/ids",
-        "BugReports": "https://github.com/richfitz/ids/issues",
-        "Imports": "openssl, uuid",
-        "Suggests": "knitr, rcorpora, rmarkdown, testthat",
-        "RoxygenNote": "6.0.1",
-        "VignetteBuilder": "knitr",
-        "NeedsCompilation": "no",
-        "Packaged": "2017-05-31 08:43:42 UTC; rich",
-        "Author": "Rich FitzJohn [aut, cre]",
-        "Maintainer": "Rich FitzJohn <rich.fitzjohn@gmail.com>",
-        "Repository": "CRAN",
-        "Date/Publication": "2017-05-31 08:49:59 UTC",
-        "Built": "R 4.5.0; ; 2025-04-01 12:09:44 UTC; unix",
-        "RemoteType": "standard",
-        "RemotePkgRef": "ids",
-        "RemoteRef": "ids",
-        "RemoteRepos": "https://cran.rstudio.com",
-        "RemoteSha": "1.0.1"
       }
     },
     "interp": {
@@ -2095,65 +1998,6 @@
         "RemoteSha": "0.3.4"
       }
     },
-    "rematch": {
-      "Source": "CRAN",
-      "Repository": "https://cloud.r-project.org",
-      "description": {
-        "Package": "rematch",
-        "Title": "Match Regular Expressions with a Nicer 'API'",
-        "Version": "2.0.0",
-        "Author": "Gabor Csardi",
-        "Maintainer": "Gabor Csardi <csardi.gabor@gmail.com>",
-        "Description": "A small wrapper on 'regexpr' to extract the matches and\n    captured groups from the match of a regular expression to a character\n    vector.",
-        "License": "MIT + file LICENSE",
-        "URL": "https://github.com/gaborcsardi/rematch",
-        "BugReports": "https://github.com/gaborcsardi/rematch/issues",
-        "RoxygenNote": "5.0.1.9000",
-        "Suggests": "covr, testthat",
-        "Encoding": "UTF-8",
-        "NeedsCompilation": "no",
-        "Packaged": "2023-08-30 12:10:51 UTC; gaborcsardi",
-        "Repository": "CRAN",
-        "Date/Publication": "2023-08-30 16:50:02 UTC",
-        "Built": "R 4.5.0; ; 2025-03-31 21:54:34 UTC; unix",
-        "RemoteType": "standard",
-        "RemotePkgRef": "rematch",
-        "RemoteRef": "rematch",
-        "RemoteRepos": "https://cran.rstudio.com",
-        "RemoteSha": "2.0.0"
-      }
-    },
-    "rematch2": {
-      "Source": "CRAN",
-      "Repository": "https://cloud.r-project.org",
-      "description": {
-        "Package": "rematch2",
-        "Title": "Tidy Output from Regular Expression Matching",
-        "Version": "2.1.2",
-        "Authors@R": "c(\n    person(\"Gábor\", \"Csárdi\", email = \"csardi.gabor@gmail.com\", role = c(\"aut\", \"cre\")),\n    person(\"Matthew\", \"Lincoln\", email = \"matthew.d.lincoln@gmail.com\", role = c(\"ctb\")))",
-        "Description": "Wrappers on 'regexpr' and 'gregexpr' to return the match\n    results in tidy data frames.",
-        "License": "MIT + file LICENSE",
-        "LazyData": "true",
-        "URL": "https://github.com/r-lib/rematch2#readme",
-        "BugReports": "https://github.com/r-lib/rematch2/issues",
-        "RoxygenNote": "7.1.0",
-        "Imports": "tibble",
-        "Suggests": "covr, testthat",
-        "Encoding": "UTF-8",
-        "NeedsCompilation": "no",
-        "Packaged": "2020-04-30 10:31:13 UTC; gaborcsardi",
-        "Author": "Gábor Csárdi [aut, cre],\n  Matthew Lincoln [ctb]",
-        "Maintainer": "Gábor Csárdi <csardi.gabor@gmail.com>",
-        "Repository": "CRAN",
-        "Date/Publication": "2020-05-01 06:50:02 UTC",
-        "Built": "R 4.5.0; ; 2025-04-01 20:37:33 UTC; unix",
-        "RemoteType": "standard",
-        "RemotePkgRef": "rematch2",
-        "RemoteRef": "rematch2",
-        "RemoteRepos": "https://cran.rstudio.com",
-        "RemoteSha": "2.1.2"
-      }
-    },
     "rlang": {
       "Source": "CRAN",
       "Repository": "https://cloud.r-project.org",
@@ -2835,13 +2679,13 @@
   },
   "files": {
     "app.R": {
-      "checksum": "3ee90c1ad8f4bd8bc952eeeaa6f8e958"
+      "checksum": "86ecef7d2d032f4f23d6fefe5757de42"
     },
     "docs/dew-point-condensation-notes.md": {
       "checksum": "c9ffd7a03ae2ade5b2bfe060c92998f9"
     },
     "R/config.R": {
-      "checksum": "3f90db9aa152c24c0f27e9322febb148"
+      "checksum": "2de751ef8c708a96bd58891249cf1bf0"
     },
     "R/dew_point.R": {
       "checksum": "eb78baf425164da485100236a1fbfa24"
@@ -2859,7 +2703,7 @@
       "checksum": "b2580539fa9ada79570ee9b276145e76"
     },
     "R/quality_control.R": {
-      "checksum": "a05642d529e39684f7123cc053ab4213"
+      "checksum": "1967c7c08c409ff23b85152b0db9ad0b"
     },
     "R/response_analysis.R": {
       "checksum": "76e7efb3077c079d9e623814432024cd"
@@ -2867,14 +2711,11 @@
     "R/run_metadata.R": {
       "checksum": "2c70e7d5f16a678d6b4e0532d1dab26d"
     },
-    "R/sheets_writeback.R": {
-      "checksum": "9294406c44f182f9f7975e6d6f03e73d"
-    },
     "R/walz_parser.R": {
       "checksum": "bd9e862c17cb85a91929b91396ecefb5"
     },
     "www/styles.css": {
-      "checksum": "b4fd953b0b0e1efd84e8e649f037c9ba"
+      "checksum": "079f65890d903016582eff62c6c4d746"
     }
   },
   "users": null
