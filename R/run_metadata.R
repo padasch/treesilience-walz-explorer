@@ -13,8 +13,14 @@ WALZ_METADATA_COLUMN_LABELS <- c(
   `xibox humidity` = "XiBox humidity",
   `EXTRA protocol description (e.g., light intensity comparison; updated light response with less steps and longer equilibration)` =
     "Protocol description",
-  `comments (e.g., changed silica beads midway causing bumps)` = "Comments"
+  `comments (e.g., changed silica beads midway causing bumps)` = "Comments",
+  `quality assessment` = "Quality assessment"
 )
+
+WALZ_QUALITY_COLUMN <- "quality assessment"
+WALZ_QUALITY_LEVELS <- c("good", "medium", "bad", "unassessed")
+
+.walz_metadata_cache <- new.env(parent = emptyenv())
 
 metadata_sheet_url <- function(sheet_id, sheet_name) {
   sprintf(
@@ -40,10 +46,10 @@ clean_run_metadata <- function(metadata) {
   }
 
   names(metadata) <- trimws(names(metadata))
-  keep_columns <- vapply(metadata, function(column) {
-    values <- trimws(as.character(column))
-    any(!is.na(values) & nzchar(values))
-  }, logical(1))
+  # Keep named columns even when every value is blank. In particular, the
+  # quality-assessment column intentionally starts empty. Only unnamed export
+  # padding columns are discarded.
+  keep_columns <- nzchar(names(metadata))
   metadata <- metadata[, keep_columns, drop = FALSE]
 
   if (!"timestamp" %in% names(metadata)) {
@@ -60,6 +66,10 @@ clean_run_metadata <- function(metadata) {
   })
   metadata <- metadata[nzchar(metadata$timestamp), , drop = FALSE]
   rownames(metadata) <- NULL
+
+  if (!WALZ_QUALITY_COLUMN %in% names(metadata)) {
+    metadata[[WALZ_QUALITY_COLUMN]] <- ""
+  }
 
   metadata$.run_id <- normalize_run_id(metadata$timestamp)
   metadata
@@ -102,6 +112,49 @@ load_public_run_metadata <- function(
     }
   )
   clean_run_metadata(metadata)
+}
+
+load_cached_run_metadata <- function(
+    sheet_id,
+    sheet_name,
+    force = FALSE,
+    ttl_seconds = 60,
+    loader = load_public_run_metadata) {
+  key <- paste(sheet_id, sheet_name, sep = "::")
+  now <- Sys.time()
+  if (!isTRUE(force) && exists(key, envir = .walz_metadata_cache, inherits = FALSE)) {
+    cached <- get(key, envir = .walz_metadata_cache, inherits = FALSE)
+    age <- as.numeric(difftime(now, cached$loaded_at, units = "secs"))
+    if (is.finite(age) && age <= ttl_seconds) {
+      return(cached$value)
+    }
+  }
+
+  value <- loader(sheet_id, sheet_name)
+  assign(key, list(value = value, loaded_at = now), envir = .walz_metadata_cache)
+  value
+}
+
+clear_metadata_cache <- function() {
+  remove(list = ls(envir = .walz_metadata_cache), envir = .walz_metadata_cache)
+  invisible(TRUE)
+}
+
+canonical_quality <- function(value) {
+  value <- tolower(trimws(as.character(value)))
+  value[is.na(value) | !nzchar(value)] <- "unassessed"
+  invalid <- !value %in% WALZ_QUALITY_LEVELS
+  value[invalid] <- "unassessed"
+  attr(value, "invalid") <- invalid
+  value
+}
+
+metadata_quality <- function(metadata, measurement_name) {
+  matches <- match_run_metadata(metadata, measurement_name)
+  if (nrow(matches) != 1L || !WALZ_QUALITY_COLUMN %in% names(matches)) {
+    return("unassessed")
+  }
+  unname(canonical_quality(matches[[WALZ_QUALITY_COLUMN]][[1]]))
 }
 
 match_run_metadata <- function(metadata, measurement_name) {
@@ -279,6 +332,22 @@ run_palette <- function(count) {
   extras <- grDevices::hcl.colors(count + length(base), palette = "Dark 3")
   extras <- extras[!tolower(extras) %in% tolower(base)]
   c(base, extras[seq_len(count - length(base))])
+}
+
+stable_run_colour <- function(run_id) {
+  run_id <- normalize_run_id(run_id)
+  unname(vapply(run_id, function(value) {
+    bytes <- utf8ToInt(value)
+    if (length(bytes) == 0L) {
+      return("#28754D")
+    }
+    hue <- sum(bytes * seq_along(bytes) * 17L) %% 360
+    grDevices::hcl(h = hue, c = 62, l = 46, fixup = TRUE)
+  }, character(1)))
+}
+
+stable_run_colours <- function(run_ids) {
+  stats::setNames(stable_run_colour(run_ids), run_ids)
 }
 
 hex_to_rgba <- function(colour, alpha = 0.1) {

@@ -1,8 +1,9 @@
 .walz_remote_cache <- new.env(parent = emptyenv())
+.walz_source_cache <- new.env(parent = emptyenv())
 
 drive_metadata_table <- function(files) {
   if (nrow(files) == 0L) {
-    return(data.frame(
+    result <- data.frame(
       id = character(),
       name = character(),
       modified_time = as.POSIXct(character(), tz = "UTC"),
@@ -10,7 +11,9 @@ drive_metadata_table <- function(files) {
       mime_type = character(),
       size = numeric(),
       stringsAsFactors = FALSE
-    ))
+    )
+    result$drive_resource <- I(vector("list", 0L))
+    return(result)
   }
 
   get_detail <- function(item, key, default = NA_character_) {
@@ -25,7 +28,7 @@ drive_metadata_table <- function(files) {
     key = "modifiedTime"
   )
 
-  data.frame(
+  result <- data.frame(
     id = files$id,
     name = files$name,
     modified_time = as.POSIXct(
@@ -48,6 +51,121 @@ drive_metadata_table <- function(files) {
     ))),
     stringsAsFactors = FALSE
   )
+  result$drive_resource <- files$drive_resource
+  result
+}
+
+source_cache_get <- function(key, ttl_seconds = 60) {
+  if (!exists(key, envir = .walz_source_cache, inherits = FALSE)) {
+    return(NULL)
+  }
+  cached <- get(key, envir = .walz_source_cache, inherits = FALSE)
+  age <- as.numeric(difftime(Sys.time(), cached$loaded_at, units = "secs"))
+  if (!is.finite(age) || age > ttl_seconds) {
+    return(NULL)
+  }
+  cached$value
+}
+
+source_cache_set <- function(key, value) {
+  assign(
+    key,
+    list(value = value, loaded_at = Sys.time()),
+    envir = .walz_source_cache
+  )
+  value
+}
+
+sort_drive_files <- function(files, kind) {
+  if (nrow(files) == 0L) {
+    return(files)
+  }
+  if (identical(kind, "measurements")) {
+    files <- files[
+      order(files$modified_time, files$name, decreasing = TRUE),
+      ,
+      drop = FALSE
+    ]
+  } else {
+    files <- files[order(files$name), , drop = FALSE]
+  }
+  rownames(files) <- NULL
+  files
+}
+
+list_drive_folder_files <- function(folder_id, extension, kind) {
+  files <- googledrive::drive_ls(googledrive::as_id(folder_id))
+  files <- drive_metadata_table(files)
+  files <- files[
+    grepl(paste0("\\.", extension, "$"), files$name, ignore.case = TRUE),
+    ,
+    drop = FALSE
+  ]
+  sort_drive_files(files, kind)
+}
+
+discover_walz_folder_ids <- function(root_id) {
+  root_files <- googledrive::drive_ls(googledrive::as_id(root_id))
+  list(
+    measurements_id = find_named_drive_folder(root_files, "measurements"),
+    protocols_id = find_named_drive_folder(root_files, "protocols")
+  )
+}
+
+list_measurement_drive <- function(
+    folder_id,
+    root_id = NULL,
+    force = FALSE,
+    ttl_seconds = 60) {
+  key <- paste("measurements", folder_id, sep = "::")
+  if (!isTRUE(force)) {
+    cached <- source_cache_get(key, ttl_seconds)
+    if (!is.null(cached)) return(cached)
+  }
+
+  resolved_id <- folder_id
+  value <- tryCatch(
+    list_drive_folder_files(resolved_id, "csv", "measurements"),
+    error = function(error) {
+      if (is.null(root_id) || !nzchar(root_id)) stop(error)
+      resolved_id <<- discover_walz_folder_ids(root_id)$measurements_id
+      list_drive_folder_files(resolved_id, "csv", "measurements")
+    }
+  )
+  source_cache_set(key, list(
+    measurements = value,
+    refreshed_at = Sys.time(),
+    measurements_id = resolved_id,
+    root_id = root_id
+  ))
+}
+
+list_protocol_drive <- function(
+    folder_id,
+    root_id = NULL,
+    force = FALSE,
+    ttl_seconds = 60) {
+  key <- paste("protocols", folder_id, sep = "::")
+  if (!isTRUE(force)) {
+    cached <- source_cache_get(key, ttl_seconds)
+    if (!is.null(cached)) return(cached)
+  }
+
+  resolved_id <- folder_id
+  value <- tryCatch(
+    list_drive_folder_files(resolved_id, "txt", "protocols"),
+    error = function(error) {
+      if (is.null(root_id) || !nzchar(root_id)) stop(error)
+      resolved_id <<- discover_walz_folder_ids(root_id)$protocols_id
+      list_drive_folder_files(resolved_id, "txt", "protocols")
+    }
+  )
+  source_cache_set(key, list(
+    protocols = value,
+    refreshed_at = Sys.time(),
+    protocols_id = resolved_id,
+    root_id = root_id
+  ))
 }
 
 find_named_drive_folder <- function(root_files, folder_name) {
@@ -76,48 +194,19 @@ find_named_drive_folder <- function(root_files, folder_name) {
 }
 
 list_walz_drive <- function(root_id) {
-  root_files <- googledrive::drive_ls(googledrive::as_id(root_id))
-  measurements_id <- find_named_drive_folder(root_files, "measurements")
-  protocols_id <- find_named_drive_folder(root_files, "protocols")
-
-  measurement_files <- googledrive::drive_ls(googledrive::as_id(measurements_id))
-  protocol_files <- googledrive::drive_ls(googledrive::as_id(protocols_id))
-
-  measurements <- drive_metadata_table(measurement_files)
-  protocols <- drive_metadata_table(protocol_files)
-
-  measurements <- measurements[
-    grepl("\\.csv$", measurements$name, ignore.case = TRUE),
-    ,
-    drop = FALSE
-  ]
-  protocols <- protocols[
-    grepl("\\.txt$", protocols$name, ignore.case = TRUE),
-    ,
-    drop = FALSE
-  ]
-
-  if (nrow(measurements) > 0L) {
-    measurements <- measurements[
-      order(measurements$modified_time, measurements$name, decreasing = TRUE),
-      ,
-      drop = FALSE
-    ]
-    rownames(measurements) <- NULL
-  }
-
-  if (nrow(protocols) > 0L) {
-    protocols <- protocols[order(protocols$name), , drop = FALSE]
-    rownames(protocols) <- NULL
-  }
+  ids <- discover_walz_folder_ids(root_id)
+  measurements <- list_drive_folder_files(
+    ids$measurements_id, "csv", "measurements"
+  )
+  protocols <- list_drive_folder_files(ids$protocols_id, "txt", "protocols")
 
   list(
     measurements = measurements,
     protocols = protocols,
     refreshed_at = Sys.time(),
     root_id = root_id,
-    measurements_id = measurements_id,
-    protocols_id = protocols_id
+    measurements_id = ids$measurements_id,
+    protocols_id = ids$protocols_id
   )
 }
 
@@ -163,6 +252,13 @@ remote_cache_key <- function(kind, record) {
   paste(kind, record$id[[1]], record$modified_iso[[1]], sep = "::")
 }
 
+record_as_dribble <- function(record) {
+  if (!"drive_resource" %in% names(record) || length(record$drive_resource) != 1L) {
+    return(googledrive::as_id(record$id[[1]]))
+  }
+  googledrive::as_dribble(record[, c("name", "id", "drive_resource"), drop = FALSE])
+}
+
 with_remote_cache <- function(kind, record, loader) {
   key <- remote_cache_key(kind, record)
   if (exists(key, envir = .walz_remote_cache, inherits = FALSE)) {
@@ -174,6 +270,12 @@ with_remote_cache <- function(kind, record, loader) {
   value
 }
 
+get_remote_cached <- function(kind, record) {
+  key <- remote_cache_key(kind, record)
+  if (!exists(key, envir = .walz_remote_cache, inherits = FALSE)) return(NULL)
+  get(key, envir = .walz_remote_cache, inherits = FALSE)
+}
+
 download_drive_record <- function(
     record,
     destination,
@@ -182,7 +284,7 @@ download_drive_record <- function(
   drive_error <- tryCatch(
     {
       drive_downloader(
-        googledrive::as_id(record$id[[1]]),
+        record_as_dribble(record),
         path = destination,
         overwrite = TRUE
       )
@@ -234,6 +336,113 @@ download_drive_record <- function(
   )
 }
 
+cache_remote_value <- function(kind, record, value) {
+  assign(remote_cache_key(kind, record), value, envir = .walz_remote_cache)
+  invisible(value)
+}
+
+batch_load_remote_measurements <- function(records, progress = FALSE) {
+  if (is.null(records) || nrow(records) == 0L) {
+    return(list())
+  }
+
+  destination_dir <- tempfile("walz-batch-")
+  dir.create(destination_dir, recursive = TRUE)
+  on.exit(unlink(destination_dir, recursive = TRUE), add = TRUE)
+  destinations <- file.path(
+    destination_dir,
+    sprintf("%03d-%s.csv", seq_len(nrow(records)), records$id)
+  )
+  urls <- sprintf(
+    "https://drive.google.com/uc?export=download&id=%s",
+    utils::URLencode(records$id, reserved = TRUE)
+  )
+
+  transfer <- tryCatch(
+    curl::multi_download(urls, destinations, progress = progress),
+    error = function(error) NULL
+  )
+  transfer_ok <- rep(FALSE, nrow(records))
+  if (!is.null(transfer) && nrow(transfer) == nrow(records)) {
+    transfer_ok <- isTRUE(transfer$success) | transfer$success
+    transfer_ok[is.na(transfer_ok)] <- FALSE
+  }
+
+  lapply(seq_len(nrow(records)), function(index) {
+    record <- records[index, , drop = FALSE]
+    if ("size" %in% names(record) && is.finite(record$size[[1]]) && record$size[[1]] == 0) {
+      return(list(
+        id = record$id[[1]], modified_iso = record$modified_iso[[1]],
+        name = record$name[[1]], value = NULL,
+        error = "The Google Drive file is empty."
+      ))
+    }
+    destination <- destinations[[index]]
+    error <- NULL
+    value <- NULL
+    if (transfer_ok[[index]] && file.exists(destination)) {
+      size <- file.info(destination)$size[[1]]
+      if (is.na(size) || size == 0) transfer_ok[[index]] <- FALSE
+    }
+    if (!transfer_ok[[index]]) {
+      error <- tryCatch(
+        {
+          download_drive_record(record, destination)
+          NULL
+        },
+        error = function(error) error
+      )
+    }
+    downloaded_in_batch <- is.null(error) && isTRUE(transfer_ok[[index]])
+    if (is.null(error)) {
+      value <- tryCatch(
+        read_walz_csv(destination),
+        error = function(parse_error) {
+          error <<- parse_error
+          NULL
+        }
+      )
+    }
+    # Google's direct endpoint can occasionally return a non-empty HTML page
+    # with a successful status. Retry parse failures through the metadata-rich
+    # googledrive record before declaring the file unusable.
+    if (downloaded_in_batch && !is.null(error)) {
+      retry_error <- tryCatch(
+        {
+          unlink(destination)
+          download_drive_record(record, destination)
+          value <- read_walz_csv(destination)
+          NULL
+        },
+        error = function(retry_error) retry_error
+      )
+      error <- retry_error
+    }
+    list(
+      id = record$id[[1]],
+      modified_iso = record$modified_iso[[1]],
+      name = record$name[[1]],
+      value = value,
+      error = if (is.null(error)) NULL else conditionMessage(error)
+    )
+  })
+}
+
+merge_measurement_batch_cache <- function(records, results) {
+  for (result in results) {
+    if (is.null(result$value)) next
+    record <- records[
+      records$id == result$id & records$modified_iso == result$modified_iso,
+      ,
+      drop = FALSE
+    ]
+    if (nrow(record) == 1L) {
+      cache_remote_value("measurement", record, result$value)
+    }
+  }
+  invisible(results)
+}
+
 load_remote_measurement <- function(record) {
   with_remote_cache("measurement", record, function() {
     extension <- tools::file_ext(record$name[[1]])
@@ -258,5 +467,10 @@ load_remote_protocol <- function(record) {
 
 clear_remote_cache <- function() {
   remove(list = ls(envir = .walz_remote_cache), envir = .walz_remote_cache)
+  invisible(TRUE)
+}
+
+clear_source_cache <- function() {
+  remove(list = ls(envir = .walz_source_cache), envir = .walz_source_cache)
   invisible(TRUE)
 }

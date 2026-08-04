@@ -1,4 +1,8 @@
-required_packages <- c("shiny", "plotly", "ggplot2", "bslib", "googledrive")
+required_packages <- c(
+  "shiny", "plotly", "ggplot2", "bslib", "googledrive", "curl",
+  "future", "promises", "googlesheets4", "base64enc", "mgcv", "interp",
+  "later"
+)
 missing_packages <- required_packages[
   !vapply(required_packages, requireNamespace, logical(1), quietly = TRUE)
 ]
@@ -19,6 +23,10 @@ source("R/protocol_match.R", local = TRUE)
 source("R/run_metadata.R", local = TRUE)
 source("R/drive_data.R", local = TRUE)
 source("R/plots.R", local = TRUE)
+source("R/light_steps.R", local = TRUE)
+source("R/sheets_writeback.R", local = TRUE)
+source("R/quality_control.R", local = TRUE)
+source("R/response_analysis.R", local = TRUE)
 
 config <- walz_config()
 configure_drive_access(config$api_key)
@@ -149,50 +157,61 @@ ui <- bslib::page_sidebar(
   fillable = FALSE,
   sidebar = bslib::sidebar(
     width = 510,
-    shiny::p(
-      class = "sidebar-intro",
-      "Choose one or more WALZ runs and how to display time."
-    ),
-    shiny::selectizeInput(
-      "measurement_ids",
-      "Measurement runs",
-      choices = character(),
-      selected = character(),
-      multiple = TRUE,
-      options = list(
-        plugins = list("remove_button"),
-        closeAfterSelect = FALSE,
-        hideSelected = TRUE,
-        placeholder = "Select one or more measurement runs"
-      )
-    ),
-    shiny::p(
-      class = "control-help",
-      "Add as many runs as needed. Remove a run with the × on its selection chip."
-    ),
-    shiny::radioButtons(
-      "time_axis_mode",
-      "Timeseries x axis",
-      choices = c(
-        "Elapsed time" = "elapsed",
-        "Local time" = "local"
+    shiny::conditionalPanel(
+      condition = "input.plot_view === 'timeseries' || input.plot_view === 'state'",
+      shiny::p(
+        class = "sidebar-intro",
+        "Choose one or more WALZ runs and how to display time."
       ),
-      selected = "elapsed",
-      inline = TRUE
-    ),
-    shiny::div(
-      class = "plot-layout-control",
-      bslib::input_switch(
-        "one_column_plots",
-        "One-column graph view",
-        value = FALSE
+      shiny::selectizeInput(
+        "measurement_ids",
+        "Measurement runs",
+        choices = character(),
+        selected = character(),
+        multiple = TRUE,
+        options = list(
+          plugins = list("remove_button"),
+          closeAfterSelect = FALSE,
+          hideSelected = TRUE,
+          placeholder = "Select one or more measurement runs"
+        )
+      ),
+      shiny::p(
+        class = "control-help",
+        "Add as many runs as needed. Remove a run with the × on its selection chip."
+      ),
+      shiny::radioButtons(
+        "time_axis_mode",
+        "Timeseries x axis",
+        choices = c(
+          "Elapsed time" = "elapsed",
+          "Local time" = "local"
+        ),
+        selected = "elapsed",
+        inline = TRUE
+      ),
+      shiny::div(
+        class = "plot-layout-control",
+        bslib::input_switch(
+          "one_column_plots",
+          "One-column graph view",
+          value = FALSE
+        )
+      ),
+      shiny::uiOutput("variable_selector"),
+      shiny::actionButton(
+        "refresh_latest",
+        "Refresh and show latest",
+        icon = shiny::icon("rotate")
       )
     ),
-    shiny::uiOutput("variable_selector"),
-    shiny::actionButton(
-      "refresh_latest",
-      "Refresh and show latest",
-      icon = shiny::icon("rotate")
+    shiny::conditionalPanel(
+      condition = "input.plot_view === 'quality_control'",
+      qc_sidebar_ui("qc")
+    ),
+    shiny::conditionalPanel(
+      condition = "input.plot_view === 'response_analysis'",
+      response_sidebar_ui("analysis")
     ),
     shiny::hr(),
     shiny::uiOutput("source_status")
@@ -211,13 +230,25 @@ ui <- bslib::page_sidebar(
     title = NULL,
     bslib::nav_panel(
       "Variables over time",
+      value = "timeseries",
       shiny::uiOutput("timeseries_alerts"),
       shiny::uiOutput("timeseries_plot_container")
     ),
     bslib::nav_panel(
       "A vs state",
+      value = "state",
       shiny::uiOutput("state_alerts"),
       shiny::uiOutput("state_plot_container")
+    ),
+    bslib::nav_panel(
+      "Quality Control",
+      value = "quality_control",
+      qc_main_ui("qc")
+    ),
+    bslib::nav_panel(
+      "Response Analysis",
+      value = "response_analysis",
+      response_main_ui("analysis")
     ),
     if (isTRUE(config$enable_dew_point_tab)) {
       bslib::nav_panel(
@@ -353,50 +384,82 @@ ui <- bslib::page_sidebar(
       )
     }
   ),
-  bslib::accordion(
-    id = "detail_accordion",
-    open = "metadata_details",
-    multiple = TRUE,
-    class = "detail-accordion",
-    bslib::accordion_panel(
-      "Metadata",
-      value = "metadata_details",
-      shiny::uiOutput("run_metadata_panel"),
-      shiny::uiOutput("full_metadata_panel")
-    ),
-    bslib::accordion_panel(
-      "Protocol details",
-      value = "protocol_details",
-      shiny::uiOutput("protocol_panel")
+  shiny::conditionalPanel(
+    condition = "input.plot_view === 'timeseries' || input.plot_view === 'state'",
+    bslib::accordion(
+      id = "detail_accordion",
+      open = "metadata_details",
+      multiple = TRUE,
+      class = "detail-accordion",
+      bslib::accordion_panel(
+        "Metadata",
+        value = "metadata_details",
+        shiny::uiOutput("run_metadata_panel"),
+        shiny::uiOutput("full_metadata_panel")
+      ),
+      bslib::accordion_panel(
+        "Protocol details",
+        value = "protocol_details",
+        shiny::uiOutput("protocol_panel")
+      )
     )
   )
 )
 
 server <- function(input, output, session) {
-  drive_index <- shiny::reactiveVal(NULL)
+  measurement_index <- shiny::reactiveVal(NULL)
+  protocol_index <- shiny::reactiveVal(NULL)
   source_error <- shiny::reactiveVal(NULL)
+  protocol_error <- shiny::reactiveVal(NULL)
   run_metadata <- shiny::reactiveVal(NULL)
   metadata_error <- shiny::reactiveVal(NULL)
+  stage_timings <- shiny::reactiveVal(list())
 
-  refresh_sources <- function() {
+  drive_index <- shiny::reactive({
+    measurements <- measurement_index()
+    if (is.null(measurements)) return(NULL)
+    protocols <- protocol_index()
+    list(
+      measurements = measurements$measurements,
+      protocols = if (is.null(protocols)) data.frame() else protocols$protocols,
+      refreshed_at = measurements$refreshed_at,
+      root_id = config$drive_folder_id,
+      measurements_id = measurements$measurements_id,
+      protocols_id = if (is.null(protocols)) config$protocols_folder_id else protocols$protocols_id
+    )
+  })
+
+  record_stage_timing <- function(stage, started) {
+    timings <- shiny::isolate(stage_timings())
+    timings[[stage]] <- as.numeric(difftime(Sys.time(), started, units = "secs"))
+    stage_timings(timings)
+    message(sprintf("WALZ stage %s: %.3f seconds", stage, timings[[stage]]))
+  }
+
+  refresh_measurements <- function(force = FALSE, show_latest = TRUE) {
     source_error(NULL)
-    metadata_error(NULL)
-
+    started <- Sys.time()
     drive_result <- tryCatch(
-      list_walz_drive(config$drive_folder_id),
+      list_measurement_drive(
+        config$measurements_folder_id,
+        root_id = config$drive_folder_id,
+        force = force,
+        ttl_seconds = config$source_cache_ttl_seconds
+      ),
       error = function(error) error
     )
-
     if (inherits(drive_result, "error")) {
       source_error(conditionMessage(drive_result))
     } else {
-      drive_index(drive_result)
+      measurement_index(drive_result)
       choices <- stats::setNames(
         drive_result$measurements$id,
         drive_result$measurements$name
       )
-      selected <- if (length(choices) > 0L) {
+      selected <- if (isTRUE(show_latest) && length(choices) > 0L) {
         unname(choices[[1]])
+      } else if (!is.null(shiny::isolate(input$measurement_ids))) {
+        intersect(shiny::isolate(input$measurement_ids), unname(choices))
       } else {
         character()
       }
@@ -408,11 +471,19 @@ server <- function(input, output, session) {
         server = TRUE
       )
     }
+    record_stage_timing("measurement_index", started)
+    invisible(!inherits(drive_result, "error"))
+  }
 
+  refresh_metadata <- function(force = FALSE) {
+    metadata_error(NULL)
+    started <- Sys.time()
     metadata_result <- tryCatch(
-      load_public_run_metadata(
+      load_cached_run_metadata(
         config$metadata_sheet_id,
-        config$metadata_sheet_name
+        config$metadata_sheet_name,
+        force = force,
+        ttl_seconds = config$source_cache_ttl_seconds
       ),
       error = function(error) error
     )
@@ -421,12 +492,45 @@ server <- function(input, output, session) {
     } else {
       run_metadata(metadata_result)
     }
-
-    invisible(!inherits(drive_result, "error"))
+    record_stage_timing("metadata", started)
+    invisible(!inherits(metadata_result, "error"))
   }
 
-  shiny::observeEvent(TRUE, refresh_sources(), once = TRUE)
+  refresh_protocols <- function(force = FALSE) {
+    protocol_error(NULL)
+    started <- Sys.time()
+    result <- tryCatch(
+      list_protocol_drive(
+        config$protocols_folder_id,
+        root_id = config$drive_folder_id,
+        force = force,
+        ttl_seconds = config$source_cache_ttl_seconds
+      ),
+      error = function(error) error
+    )
+    if (inherits(result, "error")) protocol_error(conditionMessage(result)) else protocol_index(result)
+    record_stage_timing("protocol_index", started)
+    invisible(!inherits(result, "error"))
+  }
+
+  refresh_sources <- function() {
+    refresh_measurements(force = TRUE, show_latest = TRUE)
+    refresh_metadata(force = TRUE)
+    if (!is.null(protocol_index())) refresh_protocols(force = TRUE)
+  }
+
+  shiny::observeEvent(TRUE, {
+    later::later(function() {
+      refresh_measurements(force = FALSE, show_latest = TRUE)
+      later::later(function() refresh_metadata(force = FALSE), delay = 0.05)
+    }, delay = 0.01)
+  }, once = TRUE)
   shiny::observeEvent(input$refresh_latest, refresh_sources(), ignoreInit = TRUE)
+  shiny::observeEvent(input$detail_accordion, {
+    if ("protocol_details" %in% input$detail_accordion && is.null(protocol_index())) {
+      refresh_protocols(force = FALSE)
+    }
+  }, ignoreInit = TRUE)
 
   selected_records <- shiny::reactive({
     resolve_selected_measurements(drive_index(), input$measurement_ids)
@@ -442,7 +546,10 @@ server <- function(input, output, session) {
       ))
     }
     labels <- make.unique(records$name)
-    colors <- stats::setNames(run_palette(nrow(records)), labels)
+    colors <- stats::setNames(
+      stable_run_colour(measurement_run_id(records$name)),
+      labels
+    )
     list(records = records, labels = labels, colors = colors)
   })
 
@@ -944,7 +1051,7 @@ server <- function(input, output, session) {
   })
 
   load_protocol_result <- function(record, index) {
-    if (is.null(index) || is.null(record)) {
+    if (is.null(index) || is.null(record) || nrow(index$protocols) == 0L) {
       return(list(match = NULL, text = NULL, error = NULL))
     }
 
@@ -988,6 +1095,7 @@ server <- function(input, output, session) {
 
   output$source_status <- shiny::renderUI({
     index <- drive_index()
+    protocols <- protocol_index()
     metadata <- run_metadata()
     selected <- selected_records()
 
@@ -997,6 +1105,7 @@ server <- function(input, output, session) {
       shiny::br(),
       metadata_sheet_link_ui("drive-link drive-status-link"),
       if (!is.null(source_error())) alert_ui(source_error(), "danger"),
+      if (!is.null(protocol_error())) alert_ui(protocol_error(), "warning"),
       if (!is.null(metadata_error())) alert_ui(metadata_error(), "warning"),
       if (is.null(index) && is.null(source_error())) {
         shiny::p(class = "muted-status", "Connecting to the public folder …")
@@ -1006,7 +1115,7 @@ server <- function(input, output, session) {
         shiny::tags$dt("Runs found"),
         shiny::tags$dd(if (is.null(index)) "—" else nrow(index$measurements)),
         shiny::tags$dt("Protocols found"),
-        shiny::tags$dd(if (is.null(index)) "—" else nrow(index$protocols)),
+        shiny::tags$dd(if (is.null(protocols)) "Deferred until opened" else nrow(protocols$protocols)),
         shiny::tags$dt("Metadata rows"),
         shiny::tags$dd(if (is.null(metadata)) "—" else nrow(metadata)),
         shiny::tags$dt("Selected runs"),
@@ -1389,6 +1498,10 @@ server <- function(input, output, session) {
   })
 
   output$protocol_panel <- shiny::renderUI({
+    if (is.null(protocol_index())) {
+      if (!is.null(protocol_error())) return(alert_ui(protocol_error(), "danger"))
+      return(alert_ui("Loading protocol filenames from Google Drive …", "info"))
+    }
     entries <- protocol_results()
     if (length(entries) == 0L) {
       return(alert_ui("Select at least one measurement run.", "warning"))
@@ -1402,6 +1515,30 @@ server <- function(input, output, session) {
       )
     }))
   })
+
+  qc_state <- quality_control_server(
+    "qc",
+    active = shiny::reactive(identical(input$plot_view, "quality_control")),
+    measurements = shiny::reactive({
+      index <- measurement_index()
+      if (is.null(index)) data.frame() else index$measurements
+    }),
+    metadata = shiny::reactive(run_metadata()),
+    set_metadata = function(value) run_metadata(value),
+    config = config
+  )
+
+  response_analysis_server(
+    "analysis",
+    measurements = shiny::reactive({
+      index <- measurement_index()
+      if (is.null(index)) data.frame() else index$measurements
+    }),
+    metadata = shiny::reactive(run_metadata()),
+    catalog = qc_state$catalog,
+    shared_prepared = qc_state$prepared,
+    config = config
+  )
 }
 
 shiny::shinyApp(ui, server)

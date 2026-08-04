@@ -533,6 +533,73 @@ body {
   min-height: 600px;
 }
 
+.quality-control-tab,
+.response-analysis-tab {
+  padding: 0.15rem;
+}
+
+.quality-control-tab > .card,
+.response-analysis-tab > .card,
+.response-two-column > .card {
+  border-color: var(--walz-border);
+  margin-bottom: 1rem;
+}
+
+.walz-progress {
+  background: #edf6f1;
+  border: 1px solid #a9cdb8;
+  border-radius: 0.55rem;
+  margin: 0.7rem 0 1rem;
+  padding: 0.8rem 0.9rem;
+}
+
+.walz-progress .progress {
+  height: 0.5rem;
+}
+
+.walz-progress .progress-bar {
+  background: var(--walz-green);
+}
+
+.walz-progress p {
+  color: #24543a;
+  font-size: 0.82rem;
+  margin: 0.4rem 0 0;
+}
+
+.quality-action-grid,
+.download-grid {
+  display: grid;
+  gap: 0.45rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.quality-action-grid .btn,
+.download-grid .btn {
+  margin: 0;
+  width: 100%;
+}
+
+.response-two-column {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.response-analysis-tab .download-grid {
+  margin: 0.8rem 1rem 1rem;
+}
+
+.quality-control-tab .full-metadata-scroll,
+.response-analysis-tab .full-metadata-scroll {
+  margin: 0.8rem 1rem 1rem;
+}
+
+.quality-control-tab .run-metadata-table,
+.response-analysis-tab .run-metadata-table {
+  min-width: 62rem;
+}
+
 @media (max-width: 700px) {
   .dew-planner-grid {
     grid-template-columns: 1fr;
@@ -545,5 +612,11 @@ body {
   .protocol-content {
     font-size: 0.7rem;
     margin-inline: 0.5rem;
+  }
+
+  .response-two-column,
+  .quality-action-grid,
+  .download-grid {
+    grid-template-columns: 1fr;
   }
 }

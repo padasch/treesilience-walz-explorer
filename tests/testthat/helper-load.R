@@ -7,6 +7,10 @@ source(file.path(project_root, "R", "protocol_match.R"))
 source(file.path(project_root, "R", "run_metadata.R"))
 source(file.path(project_root, "R", "drive_data.R"))
 source(file.path(project_root, "R", "plots.R"))
+source(file.path(project_root, "R", "light_steps.R"))
+source(file.path(project_root, "R", "sheets_writeback.R"))
+source(file.path(project_root, "R", "quality_control.R"))
+source(file.path(project_root, "R", "response_analysis.R"))
 
 fixture_path <- function(filename) {
   file.path(project_root, "tests", "testthat", "fixtures", filename)

@@ -18,7 +18,8 @@ test_that("metadata cleaning removes blank rows and columns but preserves header
 
   expect_equal(metadata$timestamp, c("run-one", "run-two"))
   expect_equal(metadata$`TREE species`, c("beech", "oak"))
-  expect_false("blank" %in% names(metadata))
+  expect_true("blank" %in% names(metadata))
+  expect_true(all(metadata$blank == ""))
   expect_equal(metadata$.run_id, c("run-one", "run-two"))
 })
 

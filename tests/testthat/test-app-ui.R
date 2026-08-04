@@ -48,6 +48,11 @@ test_that("multi-run controls, metadata, plots, and protocols stay synchronized"
   expect_false(grepl("show_grid", page_html, fixed = TRUE))
   expect_false(grepl("15-minute time grid", page_html, fixed = TRUE))
   expect_false(grepl("Dew-Point Calculation", page_html, fixed = TRUE))
+  expect_match(page_html, "Quality Control", fixed = TRUE)
+  expect_match(page_html, "Response Analysis", fixed = TRUE)
+  expect_match(page_html, "qc-species", fixed = TRUE)
+  expect_match(page_html, "analysis-species", fixed = TRUE)
+  expect_match(page_html, "value=\"good\" checked", fixed = TRUE)
 
   parsed <- dew_point_fixture()
   modified <- as.POSIXct("2026-07-27 16:27:42", tz = "UTC")
@@ -85,8 +90,13 @@ test_that("multi-run controls, metadata, plots, and protocols stay synchronized"
     stringsAsFactors = FALSE
   ))
 
-  app_environment$list_walz_drive <- function(root_id) fake_index
-  app_environment$load_public_run_metadata <- function(sheet_id, sheet_name) {
+  app_environment$list_measurement_drive <- function(...) {
+    c(fake_index[c("measurements", "refreshed_at")], list(measurements_id = "measurements"))
+  }
+  app_environment$list_protocol_drive <- function(...) {
+    c(fake_index[c("protocols", "refreshed_at")], list(protocols_id = "protocols"))
+  }
+  app_environment$load_cached_run_metadata <- function(...) {
     fake_metadata
   }
   app_environment$load_remote_measurement <- function(record) {
@@ -99,7 +109,12 @@ test_that("multi-run controls, metadata, plots, and protocols stay synchronized"
   app_environment$load_remote_protocol <- function(record) "Set CO2 = 440"
 
   shiny::testServer(app_environment$server, {
-    session$setInputs(measurement_ids = c("run-one-id", "run-two-id"))
+    session$setInputs(detail_accordion = "metadata_details")
+    session$flushReact()
+    session$setInputs(
+      measurement_ids = c("run-one-id", "run-two-id"),
+      detail_accordion = c("metadata_details", "protocol_details")
+    )
     session$flushReact()
     expect_true(all(
       c("A", "GH2O", "White x T") %in% selected_variables()
@@ -385,8 +400,13 @@ test_that("missing audit columns render inline without disabling the planner", {
     stringsAsFactors = FALSE
   ))
 
-  app_environment$list_walz_drive <- function(root_id) fake_index
-  app_environment$load_public_run_metadata <- function(sheet_id, sheet_name) {
+  app_environment$list_measurement_drive <- function(...) {
+    c(fake_index[c("measurements", "refreshed_at")], list(measurements_id = "measurements"))
+  }
+  app_environment$list_protocol_drive <- function(...) {
+    c(fake_index[c("protocols", "refreshed_at")], list(protocols_id = "protocols"))
+  }
+  app_environment$load_cached_run_metadata <- function(...) {
     fake_metadata
   }
   app_environment$load_remote_measurement <- function(record) parsed

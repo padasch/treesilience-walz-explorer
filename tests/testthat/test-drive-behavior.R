@@ -34,6 +34,18 @@ test_that("temporary loader failures are not cached", {
   expect_equal(calls, 2L)
 })
 
+test_that("source listings use a process-wide TTL cache", {
+  clear_source_cache()
+  expect_null(source_cache_get("measurements::test", ttl_seconds = 60))
+  value <- list(measurements = data.frame(id = "one"))
+  source_cache_set("measurements::test", value)
+  expect_identical(
+    source_cache_get("measurements::test", ttl_seconds = 60),
+    value
+  )
+  expect_null(source_cache_get("measurements::test", ttl_seconds = -1))
+})
+
 test_that("public Drive URL is used when the package download fails", {
   record <- data.frame(id = "public-file-id", stringsAsFactors = FALSE)
   destination <- tempfile()

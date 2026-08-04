@@ -78,4 +78,21 @@ test_that("the public Drive source has the validated WALZ structure and files", 
     expect_gt(audit_summary$valid_count, 0L)
 
   }
+
+  batch <- batch_load_remote_measurements(index$measurements)
+  batch_ok <- vapply(batch, function(item) is.null(item$error), logical(1))
+  nonempty <- is.na(index$measurements$size) | index$measurements$size > 0
+  expect_true(all(batch_ok[nonempty]))
+  if (any(!nonempty)) {
+    expect_true(all(vapply(
+      batch[!nonempty],
+      function(item) grepl("empty", item$error, ignore.case = TRUE),
+      logical(1)
+    )))
+  }
+  expect_true(all(vapply(
+    batch[batch_ok],
+    function(item) item$value$row_count > 0L,
+    logical(1)
+  )))
 })
