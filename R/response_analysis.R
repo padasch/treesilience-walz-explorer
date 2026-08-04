@@ -56,7 +56,7 @@ resolve_response_preset <- function(preset, catalog) {
   positions <- match(normalize_run_id(requested), normalize_run_id(catalog$run_id))
   found <- !is.na(positions)
   list(
-    ids = catalog$id[positions[found]],
+    ids = as.character(catalog$id[positions[found]]),
     matched = catalog$run_id[positions[found]],
     missing = requested[!found]
   )
@@ -71,7 +71,7 @@ response_run_choices <- function(catalog) {
     ifelse(nzchar(catalog$plant_id), paste("plant", catalog$plant_id), "plant unavailable"),
     tools::toTitleCase(catalog$quality)
   )
-  stats::setNames(catalog$id, labels)
+  stats::setNames(as.character(catalog$id), labels)
 }
 
 manual_response_catalog <- function(catalog, selected_ids) {
@@ -81,7 +81,7 @@ manual_response_catalog <- function(catalog, selected_ids) {
   if (nrow(catalog) == 0L || length(selected_ids) == 0L) {
     return(catalog[0, , drop = FALSE])
   }
-  positions <- match(selected_ids, catalog$id)
+  positions <- match(selected_ids, as.character(catalog$id))
   catalog[positions[!is.na(positions)], , drop = FALSE]
 }
 
@@ -671,7 +671,7 @@ response_analysis_server <- function(
       if (length(dates)) shiny::updateDateRangeInput(session, "date_range", start = min(dates), end = max(dates))
 
       selected <- if (is.null(input$manual_runs)) character() else input$manual_runs
-      selected <- selected[selected %in% current$id]
+      selected <- selected[selected %in% as.character(current$id)]
       shiny::updateSelectizeInput(
         session, "manual_runs", choices = response_run_choices(current),
         selected = selected, server = TRUE

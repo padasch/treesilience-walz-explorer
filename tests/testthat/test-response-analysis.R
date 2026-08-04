@@ -49,13 +49,14 @@ test_that("insufficient data retain raw workflow but suppress modeling", {
 
 test_that("local-analysis presets resolve exact Drive runs and report missing files", {
   catalog <- data.frame(
-    id = paste0("id-", seq_along(WALZ_CURATED_OAK_RUNS)),
+    id = googledrive::as_id(paste0("id-", seq_along(WALZ_CURATED_OAK_RUNS))),
     run_id = WALZ_CURATED_OAK_RUNS,
     species = "oak", plant_id = "oak-1", quality = "unassessed",
     stringsAsFactors = FALSE
   )
   resolved <- resolve_response_preset("curated_oak", catalog)
   expect_equal(resolved$matched, WALZ_CURATED_OAK_RUNS)
+  expect_type(resolved$ids, "character")
   expect_length(resolved$ids, 10L)
   expect_length(resolved$missing, 0L)
 
