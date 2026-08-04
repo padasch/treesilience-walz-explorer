@@ -31,7 +31,8 @@ No WALZ measurements, Google credentials, or thesis files are stored in this rep
 - Original `A` versus measured `PARtop` alongside `A / positive run maximum`; negative A remains negative, and non-positive runs are omitted from normalization with a warning
 - Exactly one color and trace per run, using stable colors across tabs and quality changes
 - Final-three-minute means for every stable light step, including the terminal step
-- A click-selectable raw audit with A, PPFD, extraction windows, SD, within-window A slope, coverage, completeness, and structural warnings
+- A click-selectable raw audit whose selector always includes every measurement CSV independently of the overview filters; unmatched metadata rows are flagged without hiding the raw data
+- Raw A and PPFD audits with pale extraction windows, thick three-minute mean segments, and lighter mean ± 1 SD bars, plus slope, coverage, completeness, and structural warnings
 - Switchable metadata filters or manual multi-run selection, plus a color-matched metadata table
 - Read-only quality overview; assessments are edited manually in the linked metadata Sheet
 

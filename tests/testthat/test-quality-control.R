@@ -76,3 +76,52 @@ test_that("QC selected-run control updates only when choices or selection change
   expect_true(reduced$update)
   expect_equal(reduced$selected, "run-b")
 })
+
+test_that("QC raw-audit choices can contain the complete measurement catalog", {
+  complete <- data.frame(
+    run_id = c("run-new", "run-filtered-out", "run-unmatched"),
+    stringsAsFactors = FALSE
+  )
+  overview_subset <- complete[1, , drop = FALSE]
+
+  state <- qc_selected_run_control_state(complete, "run-filtered-out", character())
+
+  expect_equal(state$values, complete$run_id)
+  expect_equal(state$selected, "run-filtered-out")
+  expect_false("run-unmatched" %in% overview_subset$run_id)
+  expect_true("run-unmatched" %in% state$values)
+})
+
+test_that("QC raw audit shows three-minute means and SD bars for A and PPFD", {
+  start <- as.POSIXct("2026-08-01 10:00:00", tz = WALZ_TIMEZONE)
+  raw <- data.frame(
+    Datetime = start + 0:9 * 60,
+    .elapsed_minutes = 0:9,
+    A = seq(1, 2.8, length.out = 10),
+    PARtop = rep(c(100, 400), each = 5)
+  )
+  summary <- data.frame(
+    step_id = 1:2,
+    window_start = start + c(2, 7) * 60,
+    window_end = start + c(5, 10) * 60,
+    A_mean = c(1.6, 2.5), A_sd = c(0.12, 0.18),
+    A_slope = c(0.01, -0.02),
+    PPFD_mean = c(100, 400), PPFD_sd = c(2, 5),
+    coverage = c(1, 0.9), window_complete = c(TRUE, FALSE),
+    warning = c("", "Short window"), stringsAsFactors = FALSE
+  )
+  entry <- list(error = NULL, extraction = list(raw = raw, summary = summary))
+
+  built <- suppressMessages(plotly::plotly_build(make_qc_audit_plot(entry)))
+  trace_names <- vapply(built$x$data, function(trace) {
+    if (is.null(trace$name)) "" else as.character(trace$name)
+  }, character(1))
+  mean_traces <- Filter(function(trace) identical(trace$name, "3-minute mean"), built$x$data)
+  error_traces <- Filter(function(trace) identical(trace$name, "Mean ± 1 SD"), built$x$data)
+
+  expect_equal(sum(trace_names == "3-minute mean"), 2L)
+  expect_equal(sum(trace_names == "Mean ± 1 SD"), 2L)
+  expect_true(all(vapply(mean_traces, function(trace) trace$line$width == 6, logical(1))))
+  expect_equal(as.numeric(error_traces[[1]]$error_y$array), summary$A_sd)
+  expect_equal(as.numeric(error_traces[[2]]$error_y$array), summary$PPFD_sd)
+})

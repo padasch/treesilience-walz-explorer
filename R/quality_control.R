@@ -244,20 +244,45 @@ make_qc_audit_plot <- function(entry) {
   }
   raw <- entry$extraction$raw
   summary <- entry$extraction$summary
+  start_time <- min(raw$Datetime, na.rm = TRUE)
+  window_start <- as.numeric(difftime(summary$window_start, start_time, units = "mins"))
+  window_end <- as.numeric(difftime(summary$window_end, start_time, units = "mins"))
+  window_midpoint <- (window_start + window_end) / 2
+  overlay_colour <- WALZ_DARK2[[1]]
+  overlay_error_colour <- hex_to_rgba(overlay_colour, 0.58)
+  hover_status <- ifelse(
+    nzchar(summary$warning), summary$warning,
+    ifelse(summary$window_complete, "Complete", "Incomplete")
+  )
   a_panel <- plotly::plot_ly(source = "qc_audit")
   a_panel <- plotly::add_lines(
     a_panel, x = raw$.elapsed_minutes, y = raw$A,
     name = "Raw A", line = list(color = "#4d5962", width = 1)
   )
-  a_panel <- plotly::add_markers(
+  a_panel <- plotly::add_segments(
     a_panel,
-    x = as.numeric(difftime(summary$window_end, min(raw$Datetime), units = "mins")),
-    y = summary$A_mean, name = "Extracted A mean",
-    marker = list(color = WALZ_DARK2[[1]], size = 8),
+    x = window_start, xend = window_end,
+    y = summary$A_mean, yend = summary$A_mean,
+    name = "3-minute mean",
+    line = list(color = overlay_colour, width = 6),
     text = sprintf(
-      "Step %d<br>SD %.3f<br>Slope %.4f/min<br>Coverage %.0f%%<br>%s",
-      summary$step_id, summary$A_sd, summary$A_slope,
-      summary$coverage * 100, ifelse(nzchar(summary$warning), summary$warning, "Complete")
+      "Step %d<br>A mean %.3f<br>A SD %.3f<br>Slope %.4f/min<br>Coverage %.0f%%<br>%s",
+      summary$step_id, summary$A_mean, summary$A_sd, summary$A_slope,
+      summary$coverage * 100, hover_status
+    ), hovertemplate = "%{text}<extra></extra>"
+  )
+  a_panel <- plotly::add_markers(
+    a_panel, x = window_midpoint, y = summary$A_mean,
+    name = "Mean ± 1 SD",
+    marker = list(color = overlay_colour, size = 5),
+    error_y = list(
+      type = "data", array = summary$A_sd, visible = TRUE,
+      color = overlay_error_colour, thickness = 1.6, width = 5
+    ),
+    text = sprintf(
+      "Step %d<br>A mean %.3f ± %.3f SD<br>Coverage %.0f%%<br>%s",
+      summary$step_id, summary$A_mean, summary$A_sd,
+      summary$coverage * 100, hover_status
     ), hovertemplate = "%{text}<extra></extra>"
   )
   ppfd_panel <- plotly::plot_ly(source = "qc_audit")
@@ -265,9 +290,35 @@ make_qc_audit_plot <- function(entry) {
     ppfd_panel, x = raw$.elapsed_minutes, y = raw$PARtop,
     name = "Raw PPFD", line = list(color = "#c6922d", width = 1.2)
   )
+  ppfd_panel <- plotly::add_segments(
+    ppfd_panel,
+    x = window_start, xend = window_end,
+    y = summary$PPFD_mean, yend = summary$PPFD_mean,
+    name = "3-minute mean", showlegend = FALSE,
+    line = list(color = overlay_colour, width = 6),
+    text = sprintf(
+      "Step %d<br>PPFD mean %.1f<br>PPFD SD %.1f<br>Coverage %.0f%%<br>%s",
+      summary$step_id, summary$PPFD_mean, summary$PPFD_sd,
+      summary$coverage * 100, hover_status
+    ), hovertemplate = "%{text}<extra></extra>"
+  )
+  ppfd_panel <- plotly::add_markers(
+    ppfd_panel, x = window_midpoint, y = summary$PPFD_mean,
+    name = "Mean ± 1 SD", showlegend = FALSE,
+    marker = list(color = overlay_colour, size = 5),
+    error_y = list(
+      type = "data", array = summary$PPFD_sd, visible = TRUE,
+      color = overlay_error_colour, thickness = 1.6, width = 5
+    ),
+    text = sprintf(
+      "Step %d<br>PPFD mean %.1f ± %.1f SD<br>Coverage %.0f%%<br>%s",
+      summary$step_id, summary$PPFD_mean, summary$PPFD_sd,
+      summary$coverage * 100, hover_status
+    ), hovertemplate = "%{text}<extra></extra>"
+  )
   for (index in seq_len(nrow(summary))) {
-    x0 <- as.numeric(difftime(summary$window_start[[index]], min(raw$Datetime), units = "mins"))
-    x1 <- as.numeric(difftime(summary$window_end[[index]], min(raw$Datetime), units = "mins"))
+    x0 <- window_start[[index]]
+    x1 <- window_end[[index]]
     a_panel <- plotly::layout(a_panel, shapes = c(a_panel$x$layout$shapes, list(list(
       type = "rect", x0 = x0, x1 = x1, y0 = 0, y1 = 1, yref = "paper",
       fillcolor = "rgba(40,117,77,0.10)", line = list(width = 0), layer = "below"
@@ -424,7 +475,11 @@ qc_sidebar_ui <- function(id) {
     metadata_sheet_link_ui("metadata-card-link"),
     shiny::hr(),
     shiny::h5("Raw-run audit"),
-    shiny::selectizeInput(ns("selected_run"), "Selected run", choices = character())
+    shiny::selectizeInput(ns("selected_run"), "Selected run", choices = character()),
+    shiny::p(
+      class = "control-help",
+      "This list contains every measurement CSV in the Drive folder, independent of the overview filters."
+    )
   )
 }
 
@@ -636,7 +691,7 @@ quality_control_server <- function(
     })
 
     shiny::observe({
-      current <- scoped_catalog()
+      current <- catalog()
       state <- qc_selected_run_control_state(
         current, input$selected_run, selected_run_choice_values()
       )
@@ -664,7 +719,7 @@ quality_control_server <- function(
     }, ignoreInit = TRUE)
 
     selected_catalog <- shiny::reactive({
-      current <- scoped_catalog()
+      current <- catalog()
       selected_run <- selected_run_id()
       if (is.null(selected_run) || !nzchar(selected_run)) {
         selected_run <- if (nrow(current) > 0L) current$run_id[[1]] else ""
@@ -696,8 +751,16 @@ quality_control_server <- function(
           ifelse(nzchar(selected$plant_id), selected$plant_id, "Plant ID unavailable"),
           tools::toTitleCase(selected$quality)
         )),
-        if (selected$metadata_matches != 1L) alert_ui(
-          "This run does not have exactly one matching metadata row.", "warning"
+        if (selected$metadata_matches == 0L) alert_ui(
+          paste0(
+            "No matching row was found in the metadata CSV for this run. ",
+            "The measurement and extraction audit are still shown."
+          ), "warning"
+        ) else if (selected$metadata_matches > 1L) alert_ui(
+          paste0(
+            "More than one metadata CSV row matches this run, so its metadata are ambiguous. ",
+            "The measurement and extraction audit are still shown."
+          ), "warning"
         )
       )
     })
