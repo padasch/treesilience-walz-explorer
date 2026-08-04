@@ -40,7 +40,7 @@ No WALZ measurements, Google credentials, or thesis files are stored in this rep
 
 - Required single-species selection, optional plant IDs, Good-only quality default, and advanced metadata filters
 - A shared step extractor with measured `PARtop`, isolated-setpoint repair, final-three-minute means, uncertainty, drift, and inclusion status
-- Observed A versus PPFD by run, and GAM-predicted A versus Tleaf at measured-PPFD slices
+- A shared slice-display toggle, defaulting to actual extracted means: observed A versus PPFD by run and observed A versus Tleaf in measured-PPFD bands; the alternative renders both charts as slices through the same fitted GAM
 - Light and temperature optima with ≥90% near-optimal ranges and explicit boundary/interior/no-positive-optimum status
 - Interactive raw and fitted Tleaf × PPFD × A views with predictions masked outside observed support
 - A faceted raw-A audit normalized by each run's positive maximum, with pale three-minute extraction windows, thick window-mean segments, and mean ± 1 SD bars
@@ -82,7 +82,7 @@ Quality Control is intentionally read-only. The app reads exactly the `quality a
 
 The exploratory species-level model is `A_mean ~ te(Tleaf_mean, log1p(PPFD_mean))`, fitted by REML with smoothing selection. Fitting requires at least four distinct runs, four measured light levels, and 16 complete extraction windows. Predictions outside the linear-interpolation support are masked. Low deviance explained, adjusted R², leave-one-run-out predictive R², GAM basis checks, or excessive boundary optima trigger a prominent caution with the failing metrics; the fitted outputs remain visible.
 
-Response Analysis supports two selection modes. Metadata filters retain the Good-only default; manual selection can include any available files, including runs without a metadata match. The separate First Analysis presets contain ten Oak temperature runs or ten Beech temperature runs; species are never combined by a preset. The observed and modeled line charts use continuous color bars for mean leaf temperature and measured PPFD, respectively. The max-normalized raw-A facets use the same final-three-minute windows as the model; non-terminal windows precede the next light-step jump, while the terminal step uses its final three minutes. Run identity colors elsewhere in the application use the Dark2 palette consistently.
+Response Analysis supports two selection modes. Metadata filters retain the Good-only default; manual selection can include any available files, including runs without a metadata match. The separate First Analysis presets contain ten Oak temperature runs or ten Beech temperature runs; species are never combined by a preset. The response-slice toggle defaults to actual extracted means and can switch both line charts to the corresponding GAM slices without refitting. Actual A–Tleaf lines group measured PPFD into 50-unit bands, retaining up to ten representative slices. Continuous color bars encode mean leaf temperature and measured PPFD. The max-normalized raw-A facets use the same final-three-minute windows as the model; non-terminal windows precede the next light-step jump, while the terminal step uses its final three minutes. Run identity colors elsewhere in the application use the Dark2 palette consistently.
 
 ## Protocol matching
 

@@ -433,6 +433,52 @@ walz_tleaf_colour <- function(temperature, limits) {
   grDevices::rgb(rgb[[1]], rgb[[2]], rgb[[3]], maxColorValue = 255)
 }
 
+response_ppfd_slice_targets <- function(steps, bin_width = 50, maximum = 10L) {
+  values <- suppressWarnings(as.numeric(steps$PPFD_mean))
+  values <- values[is.finite(values)]
+  if (length(values) == 0L) return(numeric())
+  targets <- sort(unique(round(pmax(values, 0) / bin_width) * bin_width))
+  if (length(targets) <= maximum) return(targets)
+  requested <- stats::quantile(
+    targets, probs = seq(0, 1, length.out = maximum),
+    names = FALSE, na.rm = TRUE
+  )
+  sort(unique(vapply(requested, function(value) {
+    targets[[which.min(abs(targets - value))]]
+  }, numeric(1))))
+}
+
+prepare_observed_temperature_slices <- function(
+    steps,
+    bin_width = 50,
+    maximum_slices = 10L) {
+  usable <- steps[
+    steps$include_model & is.finite(steps$A_mean) &
+      is.finite(steps$Tleaf_mean) & is.finite(steps$PPFD_mean),
+    , drop = FALSE
+  ]
+  if (nrow(usable) == 0L) return(data.frame())
+  targets <- response_ppfd_slice_targets(usable, bin_width, maximum_slices)
+  usable$PPFD_slice <- vapply(usable$PPFD_mean, function(value) {
+    targets[[which.min(abs(targets - value))]]
+  }, numeric(1))
+  grouped <- split(usable, interaction(usable$run_id, usable$PPFD_slice, drop = TRUE))
+  rows <- lapply(grouped, function(data) {
+    data.frame(
+      run_id = data$run_id[[1]],
+      PPFD_slice = data$PPFD_slice[[1]],
+      PPFD_mean = mean(data$PPFD_mean, na.rm = TRUE),
+      Tleaf_mean = mean(data$Tleaf_mean, na.rm = TRUE),
+      A_mean = mean(data$A_mean, na.rm = TRUE),
+      n_points = nrow(data),
+      stringsAsFactors = FALSE
+    )
+  })
+  result <- do.call(rbind, rows)
+  rownames(result) <- NULL
+  result
+}
+
 make_observed_response_plot <- function(steps) {
   usable <- steps[steps$include_model, , drop = FALSE]
   if (nrow(usable) == 0L) return(plotly::plotly_empty(type = "scatter", mode = "lines"))
@@ -469,12 +515,95 @@ make_observed_response_plot <- function(steps) {
   )
 }
 
+make_observed_temperature_slice_plot <- function(steps) {
+  data <- prepare_observed_temperature_slices(steps)
+  if (nrow(data) == 0L) return(plotly::plotly_empty(type = "scatter", mode = "lines"))
+  slices <- sort(unique(data$PPFD_slice))
+  colours <- grDevices::hcl.colors(length(slices), "YlOrRd", rev = TRUE)
+  light_range <- range(slices, finite = TRUE)
+  if (diff(light_range) == 0) light_range <- light_range + c(-0.5, 0.5)
+  plot <- plotly::plot_ly()
+  for (index in seq_along(slices)) {
+    slice <- slices[[index]]
+    slice_data <- data[data$PPFD_slice == slice, , drop = FALSE]
+    slice_data <- slice_data[order(slice_data$Tleaf_mean), , drop = FALSE]
+    plot <- plotly::add_trace(
+      plot, x = slice_data$Tleaf_mean, y = slice_data$A_mean,
+      type = "scatter", mode = "lines+markers",
+      name = sprintf("PPFD ≈ %.0f", slice),
+      line = list(color = colours[[index]], width = 2),
+      marker = list(
+        color = rep(slice, nrow(slice_data)), size = 5,
+        colorscale = "YlOrRd", cmin = light_range[[1]], cmax = light_range[[2]],
+        showscale = index == 1L,
+        colorbar = list(title = list(text = "PPFD slice"), tickvals = slices)
+      ),
+      text = sprintf(
+        "%s<br>PPFD slice %.0f<br>Measured PPFD %.1f<br>Tleaf %.2f°C<br>A %.3f",
+        slice_data$run_id, slice, slice_data$PPFD_mean,
+        slice_data$Tleaf_mean, slice_data$A_mean
+      ),
+      hovertemplate = "%{text}<extra></extra>", showlegend = FALSE
+    )
+  }
+  plotly::layout(
+    plot, xaxis = list(title = "Leaf temperature (°C)"),
+    yaxis = list(title = "A"), margin = list(r = 105)
+  )
+}
+
+make_modeled_light_slice_plot <- function(model_result) {
+  if (is.null(model_result$model)) {
+    return(plotly::plotly_empty(type = "scatter", mode = "lines"))
+  }
+  grid <- model_result$grid
+  temperatures <- aggregate(Tleaf_mean ~ run_id, model_result$data, mean, na.rm = TRUE)
+  temperatures <- sort(unique(temperatures$Tleaf_mean))
+  range_t <- range(temperatures, finite = TRUE)
+  colour_range <- if (diff(range_t) == 0) range_t + c(-0.5, 0.5) else range_t
+  colour_scale <- walz_tleaf_colorscale()
+  plot <- plotly::plot_ly()
+  grid_temperatures <- unique(grid$Tleaf_mean)
+  for (index in seq_along(temperatures)) {
+    temperature <- temperatures[[index]]
+    closest <- grid_temperatures[[which.min(abs(grid_temperatures - temperature))]]
+    data <- grid[
+      abs(grid$Tleaf_mean - closest) < 1e-10 & is.finite(grid$predicted_A),
+      , drop = FALSE
+    ]
+    data <- data[order(data$PPFD_mean), , drop = FALSE]
+    colour <- walz_tleaf_colour(temperature, colour_range)
+    plot <- plotly::add_trace(
+      plot, x = data$PPFD_mean, y = data$predicted_A,
+      type = "scatter", mode = "lines+markers",
+      name = sprintf("Tleaf %.1f°C", temperature),
+      line = list(color = colour, width = 2),
+      marker = list(
+        color = rep(temperature, nrow(data)), size = 0.1, opacity = 0,
+        colorscale = colour_scale, reversescale = FALSE,
+        cmin = colour_range[[1]], cmax = colour_range[[2]],
+        showscale = index == 1L,
+        colorbar = list(title = list(text = "Mean Tleaf (°C)"))
+      ),
+      text = sprintf(
+        "Tleaf %.2f°C<br>PPFD %.1f<br>Modeled A %.3f",
+        temperature, data$PPFD_mean, data$predicted_A
+      ),
+      hovertemplate = "%{text}<extra></extra>", showlegend = FALSE
+    )
+  }
+  plotly::layout(
+    plot, xaxis = list(title = "Measured PPFD"),
+    yaxis = list(title = "Modeled A"), margin = list(r = 105)
+  )
+}
+
 make_temperature_slice_plot <- function(model_result) {
   if (is.null(model_result$model)) {
     return(plotly::plotly_empty(type = "scatter", mode = "lines"))
   }
   grid <- model_result$grid
-  slices <- unique(stats::quantile(model_result$data$PPFD_mean, seq(0, 1, length.out = 6)))
+  slices <- response_ppfd_slice_targets(model_result$data)
   colours <- grDevices::hcl.colors(length(slices), "YlOrRd", rev = TRUE)
   light_range <- range(slices, finite = TRUE)
   if (diff(light_range) == 0) light_range <- light_range + c(-0.5, 0.5)
@@ -878,7 +1007,21 @@ response_sidebar_ui <- function(id) {
       ),
       shiny::uiOutput(ns("preset_status"))
     ),
-    shiny::actionButton(ns("run"), "Run analysis", icon = shiny::icon("play"), class = "btn-primary")
+    shiny::actionButton(ns("run"), "Run analysis", icon = shiny::icon("play"), class = "btn-primary"),
+    shiny::hr(),
+    shiny::h5("Response slices"),
+    shiny::radioButtons(
+      ns("slice_display"), "Values to display",
+      choices = c(
+        "Actual measurements" = "observed",
+        "GAM fits" = "model"
+      ),
+      selected = "observed"
+    ),
+    shiny::p(
+      class = "control-help",
+      "Switch between extracted three-minute means and slices through the fitted GAM without rerunning the analysis."
+    )
   )
 }
 
@@ -896,6 +1039,10 @@ response_model_theory_ui <- function() {
         "The exploratory generalized additive model is ",
         shiny::tags$code("A_mean = β₀ + f(Tleaf_mean, log(1 + PPFD_mean)) + ε"),
         ". The two-dimensional tensor-product smooth is fitted with REML and automatic shrinkage, allowing a curved temperature–light interaction without imposing a fixed response shape."
+      ),
+      shiny::p(
+        shiny::strong("Response slices: "),
+        "Actual mode connects the extracted three-minute means. For the A–Tleaf chart, measured PPFD values are grouped into 50-unit bands (up to ten representative slices). GAM mode takes both the A–PPFD and A–Tleaf curves from the same fitted two-dimensional surface."
       ),
       shiny::p(
         shiny::strong("Optima: "),
@@ -941,10 +1088,11 @@ response_main_ui <- function(id) {
     class = "response-analysis-tab",
     shiny::uiOutput(ns("status")),
     shiny::uiOutput(ns("model_notice")),
+    shiny::uiOutput(ns("slice_display_note")),
     shiny::div(
       class = "response-two-column",
-      bslib::card(bslib::card_header("Observed A versus measured PPFD"), plotly::plotlyOutput(ns("light_plot"), height = "520px")),
-      bslib::card(bslib::card_header("Modeled A versus Tleaf at PPFD slices"), plotly::plotlyOutput(ns("temperature_plot"), height = "520px"))
+      bslib::card(bslib::card_header("A versus measured PPFD by Tleaf"), plotly::plotlyOutput(ns("light_plot"), height = "520px")),
+      bslib::card(bslib::card_header("A versus Tleaf by measured PPFD"), plotly::plotlyOutput(ns("temperature_plot"), height = "520px"))
     ),
     shiny::div(
       class = "response-two-column",
@@ -1193,11 +1341,44 @@ response_analysis_server <- function(
     })
     output$light_plot <- plotly::renderPlotly({
       value <- result()
-      if (is.null(value)) plotly::plotly_empty(type = "scatter", mode = "lines") else make_observed_response_plot(value$steps)
+      if (is.null(value)) return(plotly::plotly_empty(type = "scatter", mode = "lines"))
+      mode <- if (is.null(input$slice_display)) "observed" else input$slice_display
+      if (identical(mode, "model")) {
+        make_modeled_light_slice_plot(value$model)
+      } else {
+        make_observed_response_plot(value$steps)
+      }
     })
     output$temperature_plot <- plotly::renderPlotly({
       value <- result()
-      if (is.null(value)) plotly::plotly_empty(type = "scatter", mode = "lines") else make_temperature_slice_plot(value$model)
+      if (is.null(value)) return(plotly::plotly_empty(type = "scatter", mode = "lines"))
+      mode <- if (is.null(input$slice_display)) "observed" else input$slice_display
+      if (identical(mode, "model")) {
+        make_temperature_slice_plot(value$model)
+      } else {
+        make_observed_temperature_slice_plot(value$steps)
+      }
+    })
+    output$slice_display_note <- shiny::renderUI({
+      value <- result()
+      if (is.null(value)) return(NULL)
+      mode <- if (is.null(input$slice_display)) "observed" else input$slice_display
+      if (identical(mode, "observed")) {
+        return(alert_ui(
+          "Showing actual final-three-minute step means connected as simple lines.",
+          "info"
+        ))
+      }
+      if (!identical(value$model$status, "success")) {
+        return(alert_ui(
+          paste("GAM slice curves are unavailable:", value$model$message),
+          "warning"
+        ))
+      }
+      alert_ui(
+        "Showing A–PPFD and A–Tleaf slices from the same fitted two-dimensional GAM.",
+        "info"
+      )
     })
     output$raw_3d <- plotly::renderPlotly({
       value <- result()

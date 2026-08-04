@@ -144,11 +144,52 @@ test_that("response line plots expose continuous color legends", {
   expect_equal(toupper(walz_tleaf_colour(min(limits), limits)), "#2166AC")
   expect_equal(toupper(walz_tleaf_colour(max(limits), limits)), "#B2182B")
 
+  observed_temperature <- suppressMessages(plotly::plotly_build(
+    make_observed_temperature_slice_plot(steps)
+  ))
+  expect_equal(length(observed_temperature$x$data), 6L)
+  expect_true(isTRUE(observed_temperature$x$data[[1]]$marker$showscale))
+  expect_equal(
+    observed_temperature$x$data[[1]]$marker$colorbar$title$text,
+    "PPFD slice"
+  )
+  expect_true(all(vapply(
+    observed_temperature$x$data,
+    function(trace) !isTRUE(trace$showlegend), logical(1)
+  )))
+
   model <- fit_response_gam(steps, grid_size = 30L)
   model$supported <- TRUE
+  modeled_light <- suppressMessages(plotly::plotly_build(
+    make_modeled_light_slice_plot(model)
+  ))
+  expect_equal(length(modeled_light$x$data), 5L)
+  expect_true(isTRUE(modeled_light$x$data[[1]]$marker$showscale))
+  expect_equal(
+    modeled_light$x$data[[1]]$marker$colorbar$title$text,
+    "Mean Tleaf (°C)"
+  )
+  expect_true(all(grepl("Modeled A", vapply(
+    modeled_light$x$data,
+    function(trace) trace$text[[1]], character(1)
+  ), fixed = TRUE)))
+
   slices <- suppressMessages(plotly::plotly_build(make_temperature_slice_plot(model)))
   expect_true(isTRUE(slices$x$data[[1]]$marker$showscale))
   expect_equal(slices$x$data[[1]]$marker$colorbar$title$text, "Measured PPFD")
+})
+
+test_that("observed temperature slices use measured values in bounded PPFD bands", {
+  steps <- make_response_steps(run_count = 5L, light_count = 14L)
+  targets <- response_ppfd_slice_targets(steps)
+  prepared <- prepare_observed_temperature_slices(steps)
+
+  expect_lte(length(targets), 10L)
+  expect_setequal(unique(prepared$PPFD_slice), targets)
+  expect_true(all(prepared$n_points >= 1L))
+  expect_true(all(prepared$run_id %in% unique(steps$run_id)))
+  expect_true(all(prepared$A_mean >= min(steps$A_mean)))
+  expect_true(all(prepared$A_mean <= max(steps$A_mean)))
 })
 
 test_that("response analysis ends with a concise explanation of the fitted model", {
@@ -159,6 +200,8 @@ test_that("response analysis ends with a concise explanation of the fitted model
   expect_match(html, "log(1 + PPFD_mean)", fixed = TRUE)
   expect_match(html, "outside the sampled temperature–PPFD support", fixed = TRUE)
   expect_match(html, "without a separate run effect", fixed = TRUE)
+  expect_match(html, "Actual mode connects the extracted three-minute means", fixed = TRUE)
+  expect_match(html, "same fitted two-dimensional surface", fixed = TRUE)
   expect_lt(
     regexpr("Model diagnostics", html, fixed = TRUE)[[1]],
     regexpr("Model theory", html, fixed = TRUE)[[1]]
@@ -168,8 +211,8 @@ test_that("response analysis ends with a concise explanation of the fitted model
 test_that("response slices are arranged above the raw and fitted landscapes", {
   html <- htmltools::renderTags(response_main_ui("analysis"))$html
   positions <- vapply(c(
-    "Observed A versus measured PPFD",
-    "Modeled A versus Tleaf at PPFD slices",
+    "A versus measured PPFD by Tleaf",
+    "A versus Tleaf by measured PPFD",
     "Raw extracted landscape",
     "GAM surface within observed support"
   ), function(label) regexpr(label, html, fixed = TRUE)[[1]], integer(1))
@@ -188,6 +231,19 @@ test_that("response slices are arranged above the raw and fitted landscapes", {
     regexpr("Extraction audit", html, fixed = TRUE)[[1]],
     regexpr("Model theory", html, fixed = TRUE)[[1]]
   )
+})
+
+test_that("response slice display defaults to actual measurements", {
+  sidebar_html <- htmltools::renderTags(response_sidebar_ui("analysis"))$html
+  expect_match(sidebar_html, "Values to display", fixed = TRUE)
+  expect_match(sidebar_html, "Actual measurements", fixed = TRUE)
+  expect_match(sidebar_html, "GAM fits", fixed = TRUE)
+  expect_match(
+    sidebar_html,
+    'value="observed" checked="checked"',
+    fixed = TRUE
+  )
+  expect_match(sidebar_html, "without rerunning the analysis", fixed = TRUE)
 })
 
 test_that("raw response audit is max-normalized with window means and SD", {
@@ -271,10 +327,12 @@ test_that("low diagnostics do not blank fitted response plots", {
   model <- fit_response_gam(make_response_steps(), grid_size = 30L)
   expect_equal(model$status, "success")
   model$supported <- FALSE
+  light <- suppressMessages(plotly::plotly_build(make_modeled_light_slice_plot(model)))
   temperature <- suppressMessages(plotly::plotly_build(make_temperature_slice_plot(model)))
   surface <- suppressWarnings(suppressMessages(
     plotly::plotly_build(make_surface_response_3d(model))
   ))
+  expect_gt(length(light$x$data), 0L)
   expect_gt(length(temperature$x$data), 0L)
   expect_gt(length(surface$x$data), 0L)
 })
