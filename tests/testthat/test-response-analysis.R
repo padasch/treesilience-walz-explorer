@@ -15,13 +15,13 @@ make_response_steps <- function(run_count = 5L, light_count = 6L) {
   do.call(rbind, rows)
 }
 
-if (!exists("alert_ui", envir = environment(response_model_section_ui), inherits = FALSE)) {
+if (!exists("alert_ui", envir = environment(response_model_notice_ui), inherits = FALSE)) {
   assign(
     "alert_ui",
     function(message, type = "info") {
       shiny::div(class = paste0("alert alert-", type), message)
     },
-    envir = environment(response_model_section_ui)
+    envir = environment(response_model_notice_ui)
   )
 }
 
@@ -137,6 +137,19 @@ test_that("response analysis ends with a concise explanation of the fitted model
   )
 })
 
+test_that("response slices are arranged above the raw and fitted landscapes", {
+  html <- htmltools::renderTags(response_main_ui("analysis"))$html
+  positions <- vapply(c(
+    "Observed A versus measured PPFD",
+    "Modeled A versus Tleaf at PPFD slices",
+    "Raw extracted landscape",
+    "GAM surface within observed support"
+  ), function(label) regexpr(label, html, fixed = TRUE)[[1]], integer(1))
+  expect_true(all(positions > 0L))
+  expect_true(all(diff(positions) > 0L))
+  expect_equal(lengths(regmatches(html, gregexpr("response-two-column", html, fixed = TRUE))), 2L)
+})
+
 test_that("poor model fits show one metric warning and retain fitted outputs", {
   bad_model <- list(
     status = "success", supported = FALSE,
@@ -156,13 +169,15 @@ test_that("poor model fits show one metric warning and retain fitted outputs", {
   expect_match(message, "boundary optima = 70%", fixed = TRUE)
   expect_match(message, "still shown", fixed = TRUE)
 
-  poor_html <- htmltools::renderTags(
-    response_model_section_ui(shiny::NS("analysis"), bad_model)
-  )$html
+  poor_html <- htmltools::renderTags(response_model_notice_ui(bad_model))$html
   expect_match(poor_html, "Model quality is low", fixed = TRUE)
-  expect_match(poor_html, "analysis-temperature_plot", fixed = TRUE)
-  expect_match(poor_html, "analysis-surface_3d", fixed = TRUE)
-  expect_match(poor_html, "analysis-optima_table", fixed = TRUE)
+  layout_html <- htmltools::renderTags(response_main_ui("analysis"))$html
+  expect_match(layout_html, "analysis-temperature_plot", fixed = TRUE)
+  expect_match(layout_html, "analysis-surface_3d", fixed = TRUE)
+  optima_html <- htmltools::renderTags(
+    response_optima_section_ui(shiny::NS("analysis"), bad_model)
+  )$html
+  expect_match(optima_html, "analysis-optima_table", fixed = TRUE)
   poor_download_html <- htmltools::renderTags(
     response_download_buttons_ui(shiny::NS("analysis"), bad_model)
   )$html
@@ -173,11 +188,10 @@ test_that("poor model fits show one metric warning and retain fitted outputs", {
 
   good_model <- bad_model
   good_model$supported <- TRUE
+  expect_null(response_model_notice_ui(good_model))
   good_html <- htmltools::renderTags(
-    response_model_section_ui(shiny::NS("analysis"), good_model)
+    response_optima_section_ui(shiny::NS("analysis"), good_model)
   )$html
-  expect_match(good_html, "analysis-temperature_plot", fixed = TRUE)
-  expect_match(good_html, "analysis-surface_3d", fixed = TRUE)
   expect_match(good_html, "analysis-optima_table", fixed = TRUE)
   good_download_html <- htmltools::renderTags(
     response_download_buttons_ui(shiny::NS("analysis"), good_model)

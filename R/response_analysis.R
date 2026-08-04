@@ -608,38 +608,22 @@ model_fit_warning_message <- function(model_result) {
   )
 }
 
-response_model_section_ui <- function(ns, model_result = NULL) {
-  if (is.null(model_result)) {
-    return(bslib::card(
-      bslib::card_header("Fitted response"),
-      alert_ui("Run the analysis to fit the exploratory response model.", "info")
-    ))
-  }
+response_model_notice_ui <- function(model_result = NULL) {
+  if (is.null(model_result)) return(NULL)
   if (!identical(model_result$status, "success")) {
-    return(bslib::card(
-      bslib::card_header("Fitted response unavailable"),
-      alert_ui(model_fit_warning_message(model_result), "warning")
-    ))
+    return(alert_ui(model_fit_warning_message(model_result), "warning"))
   }
-  shiny::tagList(
-    if (!isTRUE(model_result$supported)) {
-      alert_ui(model_fit_warning_message(model_result), "warning")
-    },
-    shiny::div(
-      class = "response-two-column",
-      bslib::card(
-        bslib::card_header("Modeled A versus Tleaf at PPFD slices"),
-        plotly::plotlyOutput(ns("temperature_plot"), height = "520px")
-      ),
-      bslib::card(
-        bslib::card_header("GAM surface within observed support"),
-        plotly::plotlyOutput(ns("surface_3d"), height = "600px")
-      )
-    ),
-    bslib::card(
-      bslib::card_header("Optima and ≥90% near-optimal ranges"),
-      shiny::uiOutput(ns("optima_table"))
-    )
+  if (!isTRUE(model_result$supported)) {
+    return(alert_ui(model_fit_warning_message(model_result), "warning"))
+  }
+  NULL
+}
+
+response_optima_section_ui <- function(ns, model_result = NULL) {
+  if (is.null(model_result) || !identical(model_result$status, "success")) return(NULL)
+  bslib::card(
+    bslib::card_header("Optima and ≥90% near-optimal ranges"),
+    shiny::uiOutput(ns("optima_table"))
   )
 }
 
@@ -773,12 +757,18 @@ response_main_ui <- function(id) {
       bslib::card_header("Extraction audit"),
       shiny::uiOutput(ns("extraction_table"))
     ),
+    shiny::uiOutput(ns("model_notice")),
     shiny::div(
       class = "response-two-column",
       bslib::card(bslib::card_header("Observed A versus measured PPFD"), plotly::plotlyOutput(ns("light_plot"), height = "520px")),
-      bslib::card(bslib::card_header("Raw extracted landscape"), plotly::plotlyOutput(ns("raw_3d"), height = "520px"))
+      bslib::card(bslib::card_header("Modeled A versus Tleaf at PPFD slices"), plotly::plotlyOutput(ns("temperature_plot"), height = "520px"))
     ),
-    shiny::uiOutput(ns("model_section")),
+    shiny::div(
+      class = "response-two-column",
+      bslib::card(bslib::card_header("Raw extracted landscape"), plotly::plotlyOutput(ns("raw_3d"), height = "600px")),
+      bslib::card(bslib::card_header("GAM surface within observed support"), plotly::plotlyOutput(ns("surface_3d"), height = "600px"))
+    ),
+    shiny::uiOutput(ns("optima_section")),
     bslib::card(
       bslib::card_header("Model diagnostics"),
       shiny::uiOutput(ns("diagnostics")),
@@ -1019,9 +1009,13 @@ response_analysis_server <- function(
       value <- result()
       if (is.null(value)) plotly::plotly_empty(type = "scatter3d", mode = "markers") else make_raw_response_3d(value$steps)
     })
-    output$model_section <- shiny::renderUI({
+    output$model_notice <- shiny::renderUI({
       value <- result()
-      response_model_section_ui(session$ns, if (is.null(value)) NULL else value$model)
+      response_model_notice_ui(if (is.null(value)) NULL else value$model)
+    })
+    output$optima_section <- shiny::renderUI({
+      value <- result()
+      response_optima_section_ui(session$ns, if (is.null(value)) NULL else value$model)
     })
     output$surface_3d <- plotly::renderPlotly({
       value <- result()
