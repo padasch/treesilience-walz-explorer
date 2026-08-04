@@ -706,9 +706,11 @@ response_analysis_server <- function(
 
     shiny::observeEvent(input$run_preset, {
       if (is.null(input$run_preset) || !nzchar(input$run_preset)) return()
-      resolved <- resolve_response_preset(input$run_preset, catalog())
+      current <- catalog()
+      resolved <- resolve_response_preset(input$run_preset, current)
       shiny::updateSelectizeInput(
-        session, "manual_runs", selected = resolved$ids, server = TRUE
+        session, "manual_runs", choices = response_run_choices(current),
+        selected = resolved$ids, server = TRUE
       )
     }, ignoreInit = TRUE)
 
