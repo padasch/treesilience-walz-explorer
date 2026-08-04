@@ -47,7 +47,17 @@ test_that("insufficient data retain raw workflow but suppress modeling", {
   expect_match(result$message, "suppressed")
 })
 
-test_that("local-analysis presets resolve exact Drive runs and report missing files", {
+test_that("first-analysis presets stay species-specific and resolve exact Drive runs", {
+  expect_equal(names(WALZ_RESPONSE_PRESETS), c("curated_oak", "curated_beech"))
+  expect_equal(
+    unname(WALZ_RESPONSE_PRESET_LABELS),
+    c(
+      "First Analysis — Oak temperature series (10)",
+      "First Analysis — Beech temperature series (10)"
+    )
+  )
+  expect_false(any(grepl("oak + beech|full curated|prunus", WALZ_RESPONSE_PRESET_LABELS, ignore.case = TRUE)))
+
   catalog <- data.frame(
     id = googledrive::as_id(paste0("id-", seq_along(WALZ_CURATED_OAK_RUNS))),
     run_id = WALZ_CURATED_OAK_RUNS,
@@ -59,10 +69,6 @@ test_that("local-analysis presets resolve exact Drive runs and report missing fi
   expect_type(resolved$ids, "character")
   expect_length(resolved$ids, 10L)
   expect_length(resolved$missing, 0L)
-
-  partial <- resolve_response_preset("curated_all", catalog)
-  expect_length(partial$ids, 10L)
-  expect_length(partial$missing, 11L)
 })
 
 test_that("manual response selection keeps user order and can include unmatched runs", {
@@ -85,6 +91,18 @@ test_that("response line plots expose continuous color legends", {
   expect_true(isTRUE(observed$x$data[[1]]$marker$showscale))
   expect_equal(observed$x$data[[1]]$marker$colorbar$title$text, "Mean Tleaf (°C)")
   expect_true(all(vapply(observed$x$data, function(trace) !isTRUE(trace$showlegend), logical(1))))
+  run_temperatures <- vapply(
+    observed$x$data,
+    function(trace) unique(as.numeric(trace$marker$color))[[1]],
+    numeric(1)
+  )
+  limits <- range(run_temperatures)
+  expected_line_colours <- vapply(
+    run_temperatures, walz_tleaf_colour, character(1), limits = limits
+  )
+  actual_line_colours <- vapply(observed$x$data, function(trace) trace$line$color, character(1))
+  expect_equal(toupper(actual_line_colours), toupper(expected_line_colours))
+  expect_gt(length(unique(actual_line_colours)), 1L)
 
   model <- fit_response_gam(steps, grid_size = 30L)
   model$supported <- TRUE

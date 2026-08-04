@@ -24,27 +24,14 @@ WALZ_CURATED_BEECH_RUNS <- c(
   "20260721_1240_B1"
 )
 
-WALZ_CURATED_PRUNUS_RUNS <-
-  "20260713_1023_P1"
-
 WALZ_RESPONSE_PRESETS <- list(
   curated_oak = WALZ_CURATED_OAK_RUNS,
-  curated_beech = WALZ_CURATED_BEECH_RUNS,
-  curated_oak_beech = c(WALZ_CURATED_OAK_RUNS, WALZ_CURATED_BEECH_RUNS),
-  curated_prunus = WALZ_CURATED_PRUNUS_RUNS,
-  curated_all = c(
-    WALZ_CURATED_OAK_RUNS,
-    WALZ_CURATED_BEECH_RUNS,
-    WALZ_CURATED_PRUNUS_RUNS
-  )
+  curated_beech = WALZ_CURATED_BEECH_RUNS
 )
 
 WALZ_RESPONSE_PRESET_LABELS <- c(
-  curated_oak = "Local analysis — oak temperature series (10)",
-  curated_beech = "Local analysis — beech temperature series (10)",
-  curated_oak_beech = "Local analysis — oak + beech series (20)",
-  curated_prunus = "Local analysis — Prunus pilot (1)",
-  curated_all = "Local analysis — full curated set (21)"
+  curated_oak = "First Analysis — Oak temperature series (10)",
+  curated_beech = "First Analysis — Beech temperature series (10)"
 )
 
 resolve_response_preset <- function(preset, catalog) {
@@ -403,13 +390,39 @@ run_response_job <- function(
   )
 }
 
+WALZ_TLEAF_PALETTE <- c(
+  "#B2182B", "#EF8A62", "#FDDBC7", "#D1E5F0", "#2166AC"
+)
+
+walz_tleaf_colorscale <- function() {
+  Map(
+    function(position, colour) c(position, colour),
+    seq(0, 1, length.out = length(WALZ_TLEAF_PALETTE)),
+    WALZ_TLEAF_PALETTE
+  )
+}
+
+walz_tleaf_colour <- function(temperature, limits) {
+  if (length(limits) != 2L || any(!is.finite(limits))) return("#7F7F7F")
+  span <- diff(limits)
+  position <- if (!is.finite(span) || span <= 0) {
+    0.5
+  } else {
+    (temperature - limits[[1]]) / span
+  }
+  position <- max(0, min(1, position))
+  ramp <- grDevices::colorRamp(WALZ_TLEAF_PALETTE)
+  rgb <- ramp(position)
+  grDevices::rgb(rgb[[1]], rgb[[2]], rgb[[3]], maxColorValue = 255)
+}
+
 make_observed_response_plot <- function(steps) {
   usable <- steps[steps$include_model, , drop = FALSE]
   if (nrow(usable) == 0L) return(plotly::plotly_empty(type = "scatter", mode = "lines"))
   temperatures <- aggregate(Tleaf_mean ~ run_id, usable, mean, na.rm = TRUE)
   range_t <- range(temperatures$Tleaf_mean, finite = TRUE)
   colour_range <- if (diff(range_t) == 0) range_t + c(-0.5, 0.5) else range_t
-  palette <- grDevices::colorRampPalette(c("#395f8c", "#efe0a4", "#ae402f"))(100)
+  colour_scale <- walz_tleaf_colorscale()
   plot <- plotly::plot_ly()
   runs <- unique(usable$run_id)
   for (index in seq_along(runs)) {
@@ -417,15 +430,14 @@ make_observed_response_plot <- function(steps) {
     data <- usable[usable$run_id == run, , drop = FALSE]
     data <- data[order(data$PPFD_mean), , drop = FALSE]
     temperature <- mean(data$Tleaf_mean, na.rm = TRUE)
-    position <- if (diff(range_t) == 0) 50L else round(1 + 99 * (temperature - range_t[[1]]) / diff(range_t))
-    colour <- palette[max(1L, min(100L, position))]
+    colour <- walz_tleaf_colour(temperature, colour_range)
     plot <- plotly::add_trace(
       plot, x = data$PPFD_mean, y = data$A_mean,
       type = "scatter", mode = "lines+markers", name = run,
       line = list(color = colour, width = 2),
       marker = list(
-        color = rep(temperature, nrow(data)),
-        colorscale = "RdYlBu", reversescale = TRUE,
+        color = rep(temperature, nrow(data)), line = list(color = colour),
+        colorscale = colour_scale, reversescale = FALSE,
         cmin = colour_range[[1]], cmax = colour_range[[2]],
         showscale = index == 1L,
         colorbar = list(title = list(text = "Mean Tleaf (°C)"))
@@ -600,7 +612,7 @@ response_sidebar_ui <- function(id) {
       ),
       shiny::p(
         class = "control-help",
-        "Presets reproduce the explicitly curated files from the local response-landscape analysis. You can add or remove runs after applying a preset."
+        "The First Analysis presets reproduce the separate Oak or Beech temperature series. You can add or remove runs after applying a preset."
       ),
       shiny::uiOutput(ns("preset_status"))
     ),
