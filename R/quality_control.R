@@ -540,6 +540,53 @@ manual_qc_catalog <- function(catalog, selected_ids) {
   catalog[positions[!is.na(positions)], , drop = FALSE]
 }
 
+qc_default_date_range <- function(
+    now = Sys.time(),
+    timezone = WALZ_TIMEZONE) {
+  today <- as.Date(format(now, "%Y-%m-%d", tz = timezone))
+  c(as.Date("2026-07-01"), today)
+}
+
+qc_selection_signature <- function(
+    mode,
+    species = character(),
+    plant_ids = character(),
+    date_range = NULL,
+    qualities = character(),
+    manual_ids = character()) {
+  clean <- function(values) {
+    values <- trimws(as.character(values))
+    sort(unique(values[!is.na(values) & nzchar(values)]))
+  }
+  dates <- if (is.null(date_range)) character() else {
+    format(as.Date(date_range), "%Y-%m-%d")
+  }
+  paste(
+    as.character(mode),
+    paste(clean(species), collapse = ","),
+    paste(clean(plant_ids), collapse = ","),
+    paste(dates, collapse = ":"),
+    paste(clean(qualities), collapse = ","),
+    paste(clean(manual_ids), collapse = ","),
+    sep = "|"
+  )
+}
+
+qc_catalog_signature <- function(catalog) {
+  if (is.null(catalog) || nrow(catalog) == 0L) return("")
+  columns <- intersect(
+    c(
+      "id", "modified_iso", "quality", "species", "plant_id",
+      "metadata_matches", "metadata_status"
+    ),
+    names(catalog)
+  )
+  rows <- apply(catalog[, columns, drop = FALSE], 1L, function(row) {
+    paste(as.character(row), collapse = "::")
+  })
+  paste(sort(rows), collapse = "|")
+}
+
 qc_record_version_key <- function(record) {
   modified <- if ("modified_iso" %in% names(record)) {
     as.character(record$modified_iso[[1]])
@@ -603,6 +650,7 @@ qc_selected_run_control_state <- function(catalog, current_run, previous_choices
 
 qc_sidebar_ui <- function(id) {
   ns <- shiny::NS(id)
+  default_dates <- qc_default_date_range()
   shiny::tagList(
     shiny::h5("Quality overview"),
     shiny::radioButtons(
@@ -626,7 +674,11 @@ qc_sidebar_ui <- function(id) {
         ),
         selected = c("good", "medium", "bad", "unassessed")
       ),
-      shiny::dateRangeInput(ns("date_range"), "Run date"),
+      shiny::dateRangeInput(
+        ns("date_range"), "Run date",
+        start = default_dates[[1]],
+        end = default_dates[[2]]
+      ),
       shiny::p(
         class = "control-help",
         "All four quality sections stay in place; these filters control which runs are compared."
@@ -646,6 +698,30 @@ qc_sidebar_ui <- function(id) {
       shiny::p(
         class = "control-help",
         "Add any set of runs to compare. The menu stays open while you select multiple runs."
+      )
+    ),
+    shiny::div(
+      class = "qc-analysis-actions",
+      bslib::input_task_button(
+        ns("analyze_filtered"), "Analyze filtered runs",
+        icon = shiny::icon("filter"),
+        label_busy = "Analysis running …",
+        type = "primary",
+        auto_reset = FALSE
+      ),
+      bslib::input_task_button(
+        ns("analyze_all"), "Analyze all runs",
+        icon = shiny::icon("layer-group"),
+        label_busy = "Analysis running …",
+        type = "secondary",
+        auto_reset = FALSE
+      )
+    ),
+    shiny::p(
+      class = "control-help",
+      paste0(
+        "No curves are prepared automatically. Apply the current filters with the first button, ",
+        "or ignore them and prepare every run with Analyze all runs."
       )
     ),
     shiny::sliderInput(
@@ -684,6 +760,7 @@ qc_main_ui <- function(id) {
   shiny::div(
     class = "quality-control-tab",
     shiny::uiOutput(ns("progress")),
+    shiny::uiOutput(ns("scope_notice")),
     bslib::card(
       bslib::card_header("A over elapsed time by quality assessment"),
       shiny::p(
@@ -726,6 +803,11 @@ quality_control_server <- function(
     progress <- shiny::reactiveVal(list(done = 0L, total = 0L, loading = FALSE, error = NULL))
     started <- shiny::reactiveVal(FALSE)
     loading_keys <- shiny::reactiveVal(character())
+    requested_records <- shiny::reactiveVal(NULL)
+    analyzed_catalog <- shiny::reactiveVal(NULL)
+    analysis_mode <- shiny::reactiveVal("")
+    analyzed_filter_signature <- shiny::reactiveVal("")
+    analyzed_source_signature <- shiny::reactiveVal("")
     manual_choice_signature <- shiny::reactiveVal(character())
     selected_run_choice_values <- shiny::reactiveVal(character())
     selected_run_id <- shiny::reactiveVal("")
@@ -739,10 +821,6 @@ quality_control_server <- function(
       plants <- sort(unique(current$plant_id[nzchar(current$plant_id)]))
       shiny::updateSelectizeInput(session, "species", choices = species, server = TRUE)
       shiny::updateSelectizeInput(session, "plant_ids", choices = plants, server = TRUE)
-      dates <- current$date[!is.na(current$date)]
-      if (length(dates) > 0L) {
-        shiny::updateDateRangeInput(session, "date_range", start = min(dates), end = max(dates))
-      }
       manual_choices <- qc_run_choices(current)
       current_ids <- unname(manual_choices)
       choice_signature <- paste(names(manual_choices), current_ids, sep = "::")
@@ -770,6 +848,22 @@ quality_control_server <- function(
       )
     })
 
+    current_filter_signature <- shiny::reactive({
+      qc_selection_signature(
+        mode = if (is.null(input$selection_mode)) "filters" else input$selection_mode,
+        species = input$species,
+        plant_ids = input$plant_ids,
+        date_range = input$date_range,
+        qualities = input$qualities,
+        manual_ids = input$manual_runs
+      )
+    })
+
+    display_catalog <- shiny::reactive({
+      current <- analyzed_catalog()
+      if (is.null(current)) catalog()[0, , drop = FALSE] else current
+    })
+
     prepare_entry <- function(record, parsed = NULL, error = NULL) {
       if (!is.null(error)) return(list(record = record, value = NULL, extraction = NULL, error = error))
       extraction <- tryCatch(
@@ -782,8 +876,17 @@ quality_control_server <- function(
       list(record = record, value = parsed, extraction = extraction, error = NULL)
     }
 
+    set_analysis_button_state <- function(state) {
+      bslib::update_task_button(
+        "analyze_filtered", state = state, session = session
+      )
+      bslib::update_task_button(
+        "analyze_all", state = state, session = session
+      )
+    }
+
     update_loading_progress <- function(error = NULL) {
-      records <- measurements()
+      records <- requested_records()
       total <- if (is.null(records)) 0L else nrow(records)
       current_keys <- if (total == 0L) character() else vapply(
         seq_len(total),
@@ -803,12 +906,14 @@ quality_control_server <- function(
       }))
       messages <- Filter(nzchar, c(failure_messages, error))
       done <- qc_prepared_count(state, records)
+      loading <- length(active_keys) > 0L || done < total
       progress(list(
         done = done,
         total = total,
-        loading = length(active_keys) > 0L || done < total,
+        loading = loading,
         error = if (length(messages)) paste(unique(messages), collapse = "; ") else NULL
       ))
+      if (!loading) set_analysis_button_state("ready")
     }
 
     finish_batch <- function(batch) {
@@ -855,11 +960,17 @@ quality_control_server <- function(
       invisible(NULL)
     }
 
-    start_loading <- function() {
-      records <- measurements()
-      if (is.null(records) || nrow(records) == 0L) return()
+    start_loading <- function(records) {
       started(TRUE)
-      ensure_background_workers(config$background_workers)
+      requested_records(records)
+      if (is.null(records) || nrow(records) == 0L) {
+        progress(list(
+          done = 0L, total = 0L, loading = FALSE,
+          error = "No runs match the current Quality Control selection."
+        ))
+        set_analysis_button_state("ready")
+        return()
+      }
       state <- prepared()
       active_keys <- loading_keys()
       pending <- integer()
@@ -891,6 +1002,7 @@ quality_control_server <- function(
       update_loading_progress()
 
       if (nrow(pending_records) > 0L) {
+        ensure_background_workers(config$background_workers)
         groups <- split(
           seq_len(nrow(pending_records)),
           ceiling(seq_len(nrow(pending_records)) / 12L)
@@ -901,16 +1013,55 @@ quality_control_server <- function(
       }
     }
 
-    shiny::observeEvent(active(), {
-      if (isTRUE(active())) start_loading()
-    }, ignoreInit = FALSE)
-    shiny::observeEvent(measurements(), {
-      if (isTRUE(active())) start_loading()
+    begin_analysis <- function(selection, mode) {
+      if (isTRUE(progress()$loading)) {
+        set_analysis_button_state("busy")
+        shiny::showNotification(
+          "Quality Control analysis is already running.", type = "message"
+        )
+        return()
+      }
+      analyzed_catalog(selection)
+      analysis_mode(mode)
+      analyzed_filter_signature(current_filter_signature())
+      analyzed_source_signature(qc_catalog_signature(selection))
+      records <- measurements()
+      records <- records[
+        match(as.character(selection$id), as.character(records$id)),
+        ,
+        drop = FALSE
+      ]
+      records <- records[!is.na(records$id), , drop = FALSE]
+      set_analysis_button_state("busy")
+      start_loading(records)
+    }
+
+    shiny::observeEvent(input$analyze_filtered, {
+      begin_analysis(scoped_catalog(), "filtered")
+    }, ignoreInit = TRUE)
+    shiny::observeEvent(input$analyze_all, {
+      begin_analysis(catalog(), "all")
     }, ignoreInit = TRUE)
 
     output$progress <- shiny::renderUI({
       state <- progress()
-      if (!isTRUE(started())) return(alert_ui("Preparing Quality Control when this tab opens …", "info"))
+      if (!isTRUE(started())) {
+        return(alert_ui(
+          paste0(
+            "Ready. Adjust the filters, then choose Analyze filtered runs, ",
+            "or choose Analyze all runs."
+          ),
+          "info"
+        ))
+      }
+      if (state$total == 0L && !is.null(state$error)) {
+        return(alert_ui(state$error, "warning"))
+      }
+      scope_label <- if (identical(analysis_mode(), "all")) {
+        "the all-run selection"
+      } else {
+        "the filtered selection"
+      }
       if (isTRUE(state$loading)) {
         return(shiny::tagList(
           shiny::div(
@@ -921,23 +1072,66 @@ quality_control_server <- function(
               `aria-valuenow` = state$done,
               style = sprintf("width: %.1f%%", 100 * state$done / max(1, state$total))
             )),
-            shiny::p(sprintf("%d of %d runs checked", state$done, state$total))
+            shiny::p(sprintf(
+              "Analyzing %s: %d of %d runs checked",
+              scope_label, state$done, state$total
+            ))
           ),
           if (!is.null(state$error)) alert_ui(state$error, "warning")
         ))
       }
-      failures <- qc_failed_count(prepared(), measurements())
+      failures <- qc_failed_count(prepared(), requested_records())
       shiny::tagList(
         alert_ui(if (failures == 0L) {
-          sprintf("%d runs ready and cached for this process.", state$done)
+          sprintf(
+            "%d runs from %s are ready and cached for this process.",
+            state$done, scope_label
+          )
         } else {
           sprintf(
-            "%d runs ready; %d failed. Results are cached for this process.",
-            max(0L, state$done - failures), failures
+            paste0(
+              "%d runs from %s are ready; %d failed. ",
+              "Results are cached for this process."
+            ),
+            max(0L, state$done - failures), scope_label, failures
           )
         }, "info"),
         if (!is.null(state$error)) alert_ui(state$error, "warning")
       )
+    })
+
+    output$scope_notice <- shiny::renderUI({
+      selection <- analyzed_catalog()
+      if (is.null(selection)) return(NULL)
+      notices <- list()
+      if (
+        identical(analysis_mode(), "filtered") &&
+          !identical(analyzed_filter_signature(), current_filter_signature())
+      ) {
+        notices <- c(notices, list(alert_ui(
+          paste0(
+            "The filters have changed. The current overview still shows the previous result; ",
+            "choose Analyze filtered runs to update it."
+          ),
+          "warning"
+        )))
+      }
+      current <- catalog()
+      positions <- match(as.character(selection$id), as.character(current$id))
+      current_selection <- current[positions[!is.na(positions)], , drop = FALSE]
+      if (!identical(
+        analyzed_source_signature(),
+        qc_catalog_signature(current_selection)
+      )) {
+        notices <- c(notices, list(alert_ui(
+          paste0(
+            "The Drive listing or metadata changed after this result was prepared. ",
+            "Run the analysis again to refresh the overview."
+          ),
+          "warning"
+        )))
+      }
+      if (length(notices) == 0L) NULL else shiny::tagList(notices)
     })
 
     quality_levels <- c("good", "medium", "bad", "unassessed")
@@ -945,7 +1139,7 @@ quality_control_server <- function(
       good = "Good", medium = "Medium", bad = "Bad", unassessed = "Unassessed"
     )
     quality_data <- shiny::reactive({
-      current <- scoped_catalog()
+      current <- display_catalog()
       stats::setNames(lapply(quality_levels, function(quality) {
         prepare_qc_timeseries_data(
           prepared(), current[current$quality == quality, , drop = FALSE]
@@ -970,7 +1164,12 @@ quality_control_server <- function(
     }
 
     output$overview_sections <- shiny::renderUI({
-      current_catalog <- scoped_catalog()
+      current_catalog <- display_catalog()
+      if (is.null(analyzed_catalog())) {
+        return(alert_ui(
+          "No Quality Control overview has been analyzed yet.", "info"
+        ))
+      }
       load_state <- progress()
       if (isTRUE(load_state$loading)) {
         return(shiny::tagList(lapply(quality_levels, function(quality) {
@@ -1030,7 +1229,7 @@ quality_control_server <- function(
           quality_data(), `[[`, "normalization_warnings"
         )))
       }
-      records <- measurements()
+      records <- requested_records()
       failures <- if (is.null(records) || nrow(records) == 0L) {
         list()
       } else {
@@ -1053,7 +1252,7 @@ quality_control_server <- function(
           length(failures), paste(failure_labels, collapse = "; ")
         ))
       }
-      invalid <- scoped_catalog()$run_id[scoped_catalog()$quality_invalid]
+      invalid <- display_catalog()$run_id[display_catalog()$quality_invalid]
       if (length(invalid) > 0L) warnings <- c(warnings, sprintf(
         "Unexpected quality values are grouped as Unassessed: %s.",
         paste(invalid, collapse = ", ")
@@ -1168,7 +1367,31 @@ quality_control_server <- function(
         return(if (!is.null(entry$error)) {
           alert_ui(entry$error, "danger")
         } else {
-          alert_ui("Preparing the selected run audit …", "info")
+          selected <- selected_catalog()
+          target_ids <- if (is.null(requested_records())) {
+            character()
+          } else {
+            as.character(requested_records()$id)
+          }
+          selected_id <- if (nrow(selected) == 1L) {
+            as.character(selected$id[[1]])
+          } else {
+            ""
+          }
+          if (
+            isTRUE(progress()$loading) && nzchar(selected_id) &&
+              selected_id %in% target_ids
+          ) {
+            alert_ui("Preparing the selected run audit …", "info")
+          } else {
+            alert_ui(
+              paste0(
+                "This run has not been analyzed yet. Include it in the current filters and ",
+                "choose Analyze filtered runs, or choose Analyze all runs."
+              ),
+              "info"
+            )
+          }
         })
       }
       table <- entry$extraction$summary[, c(
@@ -1189,8 +1412,15 @@ quality_control_server <- function(
         }))
       ))
     })
-    output$metadata_table <- shiny::renderUI(quality_metadata_table_ui(scoped_catalog()))
+    output$metadata_table <- shiny::renderUI(
+      quality_metadata_table_ui(display_catalog())
+    )
 
-    list(prepared = prepared, catalog = catalog)
+    list(
+      prepared = prepared,
+      catalog = catalog,
+      analyzed_catalog = analyzed_catalog,
+      progress = progress
+    )
   })
 }

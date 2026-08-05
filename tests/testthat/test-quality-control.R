@@ -1,3 +1,24 @@
+if (!exists("alert_ui", envir = environment(quality_control_server), inherits = FALSE)) {
+  assign(
+    "alert_ui",
+    function(message, level = "info") {
+      shiny::div(class = paste0("alert alert-", level), message)
+    },
+    envir = environment(quality_control_server)
+  )
+}
+if (!exists(
+  "metadata_sheet_link_ui",
+  envir = environment(quality_control_server),
+  inherits = FALSE
+)) {
+  assign(
+    "metadata_sheet_link_ui",
+    function(class = NULL) shiny::a(class = class, "Open metadata sheet"),
+    envir = environment(quality_control_server)
+  )
+}
+
 test_that("catalog keeps unmatched runs and canonicalizes quality", {
   modified <- as.POSIXct("2026-08-01", tz = "UTC")
   files <- data.frame(
@@ -21,6 +42,148 @@ test_that("catalog keeps unmatched runs and canonicalizes quality", {
   expect_equal(catalog$metadata_status[[3]], "No metadata row")
   expect_equal(stable_run_colour(catalog$run_id), catalog$colour)
 })
+
+test_that("QC date defaults start on 1 July 2026 and end today in Zurich", {
+  now <- as.POSIXct("2026-08-05 22:30:00", tz = "UTC")
+  expect_equal(
+    qc_default_date_range(now, "Europe/Zurich"),
+    as.Date(c("2026-07-01", "2026-08-06"))
+  )
+
+  html <- htmltools::renderTags(qc_sidebar_ui("qc"))$html
+  expect_match(html, 'data-initial-date="2026-07-01"', fixed = TRUE)
+  expect_match(
+    html,
+    format(qc_default_date_range()[[2]], 'data-initial-date="%Y-%m-%d"'),
+    fixed = TRUE
+  )
+})
+
+test_that("QC selection and source signatures are deterministic", {
+  first <- qc_selection_signature(
+    "filters", species = c("oak", "beech"), plant_ids = c("2", "1"),
+    date_range = as.Date(c("2026-07-01", "2026-08-05")),
+    qualities = c("bad", "good")
+  )
+  second <- qc_selection_signature(
+    "filters", species = c("beech", "oak"), plant_ids = c("1", "2"),
+    date_range = as.Date(c("2026-07-01", "2026-08-05")),
+    qualities = c("good", "bad")
+  )
+  expect_identical(first, second)
+
+  catalog <- data.frame(
+    id = c("b", "a"), modified_iso = c("2", "1"),
+    quality = c("good", "bad"), species = c("oak", "beech"),
+    plant_id = c("2", "1"), metadata_matches = 1L,
+    metadata_status = "Exact ID", stringsAsFactors = FALSE
+  )
+  expect_identical(
+    qc_catalog_signature(catalog),
+    qc_catalog_signature(catalog[2:1, , drop = FALSE])
+  )
+  changed <- catalog
+  changed$quality[[1]] <- "medium"
+  expect_false(identical(
+    qc_catalog_signature(catalog), qc_catalog_signature(changed)
+  ))
+})
+
+test_that("QC prepares only the requested scope and never starts automatically", {
+  clear_remote_cache()
+  withr::defer(clear_remote_cache())
+
+  modified <- as.POSIXct("2026-08-05 08:00:00", tz = "UTC")
+  records <- data.frame(
+    id = c("before", "july", "august"),
+    name = c(
+      "20260630_1000_before.csv",
+      "20260702_1000_july.csv",
+      "20260801_1000_august.csv"
+    ),
+    modified_time = modified - c(120, 60, 0),
+    modified_iso = c(
+      "2026-08-05T07:58:00Z",
+      "2026-08-05T07:59:00Z",
+      "2026-08-05T08:00:00Z"
+    ),
+    mime_type = "text/csv",
+    size = 1,
+    stringsAsFactors = FALSE
+  )
+  metadata <- clean_run_metadata(data.frame(
+    timestamp = tools::file_path_sans_ext(records$name),
+    `TREE species` = "oak",
+    `plant id` = c("before", "july", "august"),
+    `quality assessment` = "",
+    check.names = FALSE,
+    stringsAsFactors = FALSE
+  ))
+  parsed <- dew_point_fixture()
+  for (index in seq_len(nrow(records))) {
+    cache_remote_value(
+      "measurement", records[index, , drop = FALSE], parsed
+    )
+  }
+
+  shiny::testServer(
+    quality_control_server,
+    args = list(
+      active = shiny::reactive(FALSE),
+      measurements = shiny::reactive(records),
+      metadata = shiny::reactive(metadata),
+      config = list(
+        background_workers = 2L,
+        metadata_sheet_id = "sheet-test"
+      )
+    ),
+    {
+      session$flushReact()
+      expect_null(analyzed_catalog())
+      expect_equal(progress()$total, 0L)
+      expect_false(progress()$loading)
+      expect_match(output$progress$html, "Ready.", fixed = TRUE)
+
+      session$setInputs(
+        selection_mode = "filters",
+        species = character(),
+        plant_ids = character(),
+        qualities = c("good", "medium", "bad", "unassessed"),
+        date_range = as.Date(c("2026-07-01", "2026-08-05"))
+      )
+      session$flushReact()
+      session$setInputs(analyze_filtered = 1L)
+      session$flushReact()
+
+      expect_setequal(analyzed_catalog()$id, c("july", "august"))
+      expect_equal(progress()$total, 2L)
+      expect_equal(progress()$done, 2L)
+      expect_false(progress()$loading)
+      expect_match(output$progress$html, "2 runs", fixed = TRUE)
+
+      session$setInputs(
+        date_range = as.Date(c("2026-08-01", "2026-08-05"))
+      )
+      session$flushReact()
+      expect_setequal(analyzed_catalog()$id, c("july", "august"))
+      expect_match(output$scope_notice$html, "filters have changed", fixed = TRUE)
+
+      session$setInputs(analyze_filtered = 2L)
+      session$flushReact()
+      expect_identical(as.character(analyzed_catalog()$id), "august")
+      expect_equal(progress()$total, 1L)
+      expect_equal(progress()$done, 1L)
+
+      session$setInputs(analyze_all = 1L)
+      session$flushReact()
+      expect_setequal(analyzed_catalog()$id, records$id)
+      expect_equal(progress()$total, 3L)
+      expect_equal(progress()$done, 3L)
+      expect_false(progress()$loading)
+    }
+  )
+})
+
 make_qc_timeseries_fixture <- function() {
   start <- as.POSIXct("2026-08-01 10:00:00", tz = WALZ_TIMEZONE)
   make_entry <- function(values) {

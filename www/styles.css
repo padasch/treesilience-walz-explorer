@@ -534,6 +534,16 @@ body {
   padding: 0.15rem;
 }
 
+.qc-analysis-actions {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0.85rem 0 0.45rem;
+}
+
+.qc-analysis-actions .btn {
+  width: 100%;
+}
+
 .quality-control-tab > .card,
 .response-analysis-tab > .card,
 .response-two-column > .card {

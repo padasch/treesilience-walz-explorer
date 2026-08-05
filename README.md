@@ -34,6 +34,8 @@ No WALZ measurements, Google credentials, or thesis files are stored in this rep
 - A raw audit whose selector always includes every measurement CSV independently of the overview filters; unmatched metadata rows are flagged without hiding the raw data
 - Raw A and PPFD audits with pale extraction windows, thick three-minute mean segments, and lighter mean ± 1 SD bars, plus slope, coverage, completeness, and structural warnings
 - Switchable metadata filters or manual multi-run selection, plus a color-matched metadata table
+- A default run-date range from 1 July 2026 through the current Europe/Zurich date
+- Explicit **Analyze filtered runs** and **Analyze all runs** actions with run-count progress; opening the tab performs no collection-wide preparation
 - Read-only quality overview; assessments are edited manually in the linked metadata Sheet
 
 ### Response Analysis
@@ -72,7 +74,7 @@ The app uses `googledrive::drive_deauth()` for non-interactive access to files t
 - `WALZ_ENABLE_DEW_POINT_TAB`: set to `true` only for development review of the disabled calculator
 - `WALZ_BACKGROUND_WORKERS`: background worker count, with a minimum and default of two
 
-Drive listings and public metadata are cached process-wide for 60 seconds. Downloaded measurement and protocol content is cached by Drive file ID and `modifiedTime`; extracted light-step summaries also include extraction settings in their cache key. The Explorer lists measurements first, loads metadata after the first plot, and does not list protocols until the protocol accordion is opened. QC and analysis collections load only on first use in sequential batches of about 12, with concurrent transfers inside each batch and per-file fallback through `googledrive`. “Refresh and show latest” forces the measurement and metadata sources to refresh, while protocol refresh remains deferred unless protocols have already been opened. Data updates do not require a code deployment.
+Drive listings and public metadata are cached process-wide for 60 seconds. Downloaded measurement and protocol content is cached by Drive file ID and `modifiedTime`; extracted light-step summaries also include extraction settings in their cache key. The Explorer lists measurements first, loads metadata after the first plot, and does not list protocols until the protocol accordion is opened. Quality Control prepares nothing until **Analyze filtered runs** or **Analyze all runs** is pressed; filtered analysis downloads and wrangles only the current selection, while the all-runs action deliberately ignores the filters. Preparation runs in batches of about 12, with concurrent transfers inside each batch, per-file fallback through `googledrive`, and visible completed/total progress. “Refresh and show latest” forces the measurement and metadata sources to refresh, while protocol refresh remains deferred unless protocols have already been opened. Data updates do not require a code deployment.
 
 ## Quality assessment workflow
 
