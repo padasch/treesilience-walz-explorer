@@ -386,7 +386,7 @@ make_qc_timeseries_plot <- function(
     )
 
   widget <- suppressWarnings(plotly::ggplotly(
-    plot, dynamicTicks = TRUE, tooltip = "text", source = "qc_overview"
+    plot, dynamicTicks = FALSE, tooltip = "text", source = "qc_overview"
   ))
   widget <- plotly::layout(
     widget, hovermode = "closest", showlegend = FALSE,
