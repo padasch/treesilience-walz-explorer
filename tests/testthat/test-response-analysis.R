@@ -123,6 +123,16 @@ test_that("manual response selection keeps user order and can include unmatched 
   expect_true(any(grepl("species unavailable", names(choices), fixed = TRUE)))
 })
 
+test_that("response analysis rejects mixed-species selections", {
+  expect_null(response_species_selection_error(data.frame(species = "oak")))
+  expect_null(response_species_selection_error(data.frame(species = c("oak", ""))))
+  message <- response_species_selection_error(data.frame(
+    species = c("Oak", "beech", "oak"), stringsAsFactors = FALSE
+  ))
+  expect_match(message, "one species at a time", fixed = TRUE)
+  expect_match(message, "beech, oak", fixed = TRUE)
+})
+
 test_that("response line plots expose continuous color legends", {
   steps <- make_response_steps()
   observed <- suppressMessages(plotly::plotly_build(make_observed_response_plot(steps)))
@@ -225,6 +235,7 @@ test_that("response analysis ends with a concise explanation of the fitted model
   expect_match(html, "log(1 + PPFD_mean)", fixed = TRUE)
   expect_match(html, "outside the sampled temperature–PPFD support", fixed = TRUE)
   expect_match(html, "without a separate run effect", fixed = TRUE)
+  expect_match(html, "selected runs from one species", fixed = TRUE)
   expect_match(html, "Actual mode connects the extracted three-minute means", fixed = TRUE)
   expect_match(html, "same fitted two-dimensional surface", fixed = TRUE)
   expect_lt(
@@ -260,6 +271,8 @@ test_that("response slices are arranged above the raw and fitted landscapes", {
 
 test_that("response slice display defaults to actual measurements", {
   sidebar_html <- htmltools::renderTags(response_sidebar_ui("analysis"))$html
+  expect_match(sidebar_html, "Running analysis …", fixed = TRUE)
+  expect_match(sidebar_html, "bslib-task-button", fixed = TRUE)
   expect_match(sidebar_html, "Values to display", fixed = TRUE)
   expect_match(sidebar_html, "Actual measurements", fixed = TRUE)
   expect_match(sidebar_html, "GAM fits", fixed = TRUE)
@@ -269,6 +282,10 @@ test_that("response slice display defaults to actual measurements", {
     fixed = TRUE
   )
   expect_match(sidebar_html, "without rerunning the analysis", fixed = TRUE)
+  position <- regexpr("Advanced filters", sidebar_html, fixed = TRUE)[[1]]
+  panel <- substr(sidebar_html, position, position + 700L)
+  expect_match(panel, "accordion-button collapsed", fixed = TRUE)
+  expect_match(panel, "aria-expanded=\"false\"", fixed = TRUE)
 })
 
 test_that("raw response audit is max-normalized with window means and SD", {

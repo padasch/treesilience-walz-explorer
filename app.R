@@ -74,6 +74,19 @@ alert_ui <- function(message, level = c("warning", "danger", "info")) {
   )
 }
 
+format_source_refresh_time <- function(refreshed_at, timezone = WALZ_TIMEZONE) {
+  if (
+    is.null(refreshed_at) || length(refreshed_at) == 0L ||
+      is.na(refreshed_at[[1]])
+  ) {
+    return("—")
+  }
+  formatted <- format(
+    refreshed_at[[1]], "%d %b %Y, %H:%M %Z", tz = timezone
+  )
+  sub("^0", "", formatted)
+}
+
 protocol_card_ui <- function(protocol, role, measurement_name, colour = NULL) {
   header <- sprintf("%s measurement protocol", role)
   card_style <- if (is.null(colour)) {
@@ -387,7 +400,7 @@ ui <- bslib::page_sidebar(
     condition = "input.plot_view === 'timeseries' || input.plot_view === 'state'",
     bslib::accordion(
       id = "detail_accordion",
-      open = "metadata_details",
+      open = FALSE,
       multiple = TRUE,
       class = "detail-accordion",
       bslib::accordion_panel(
@@ -1123,7 +1136,7 @@ server <- function(input, output, session) {
         shiny::tags$dd(if (is.null(index)) {
           "—"
         } else {
-          format(index$refreshed_at, "%Y-%m-%d %H:%M:%S %Z")
+          format_source_refresh_time(index$refreshed_at, config$timezone)
         })
       )
     )

@@ -72,6 +72,23 @@ manual_response_catalog <- function(catalog, selected_ids) {
   catalog[positions[!is.na(positions)], , drop = FALSE]
 }
 
+response_species_selection_error <- function(selection) {
+  if (
+    is.null(selection) || nrow(selection) == 0L ||
+      !"species" %in% names(selection)
+  ) {
+    return(NULL)
+  }
+  species <- unique(tolower(trimws(as.character(selection$species))))
+  species <- species[!is.na(species) & nzchar(species)]
+  if (length(species) <= 1L) return(NULL)
+
+  sprintf(
+    "Response Analysis supports one species at a time. The current selection mixes: %s.",
+    paste(sort(species), collapse = ", ")
+  )
+}
+
 response_model_coverage <- function(data) {
   usable <- data[
     data$include_model & is.finite(data$A_mean) &
@@ -1011,6 +1028,7 @@ response_sidebar_ui <- function(id) {
         selected = "good"
       ),
       bslib::accordion(
+        open = FALSE,
         bslib::accordion_panel(
           "Advanced filters",
           shiny::dateRangeInput(ns("date_range"), "Date"),
@@ -1048,7 +1066,13 @@ response_sidebar_ui <- function(id) {
       ),
       shiny::uiOutput(ns("preset_status"))
     ),
-    shiny::actionButton(ns("run"), "Run analysis", icon = shiny::icon("play"), class = "btn-primary"),
+    bslib::input_task_button(
+      ns("run"), "Run analysis",
+      icon = shiny::icon("play"),
+      label_busy = "Running analysis …",
+      type = "primary",
+      auto_reset = FALSE
+    ),
     shiny::hr(),
     shiny::h5("Response slices"),
     shiny::radioButtons(
@@ -1091,7 +1115,7 @@ response_model_theory_ui <- function() {
       ),
       shiny::p(
         shiny::strong("Interpretation: "),
-        "All selected runs are pooled into one exploratory surface, without a separate run effect. Use the extraction audit and model diagnostics to judge reliability; low diagnostic scores trigger a warning but do not hide the fitted results."
+        "All selected runs from one species are pooled into one exploratory surface, without a separate run effect. Use the extraction audit and model diagnostics to judge reliability; low diagnostic scores trigger a warning but do not hide the fitted results."
       )
     )
   )
@@ -1250,6 +1274,7 @@ response_analysis_server <- function(
     })
 
     shiny::observeEvent(input$run, {
+      if (isTRUE(running())) return()
       selected <- selected_catalog()
       last_error(NULL)
       mode <- if (is.null(input$selection_mode)) "filters" else input$selection_mode
@@ -1277,6 +1302,11 @@ response_analysis_server <- function(
         })
         return()
       }
+      species_error <- response_species_selection_error(selected)
+      if (!is.null(species_error)) {
+        last_error(species_error)
+        return()
+      }
       records <- measurements()[match(selected$id, measurements()$id), , drop = FALSE]
       shared <- shared_prepared()
       cached <- list()
@@ -1294,6 +1324,7 @@ response_analysis_server <- function(
         if (!is.null(extraction)) cached_extractions[[id_value]] <- extraction
       }
       running(TRUE)
+      bslib::update_task_button("run", state = "busy", session = session)
       ensure_background_workers(config$background_workers)
       promise <- promises::future_promise({
         run_response_job(records, selected, cached, cached_extractions)
@@ -1310,10 +1341,12 @@ response_analysis_server <- function(
           }
           result(value)
           running(FALSE)
+          bslib::update_task_button("run", state = "ready", session = session)
         },
         onRejected = function(error) {
           last_error(conditionMessage(error))
           running(FALSE)
+          bslib::update_task_button("run", state = "ready", session = session)
         }
       )
     }, ignoreInit = TRUE)
@@ -1358,9 +1391,6 @@ response_analysis_server <- function(
       if (!identical(model$status, "success")) return(alert_ui(model$message, "warning"))
       shiny::tagList(
         source_notes,
-        if (length(unique(value$selection$species[nzchar(value$selection$species)])) > 1L) {
-          alert_ui("The manual selection contains multiple species; the exploratory GAM pools them into one response surface.", "warning")
-        },
         alert_ui(model$coverage$summary$message, "info"),
         if (isTRUE(model$supported)) alert_ui(model$diagnostics$interpretation, "info") else NULL,
         if (length(value$errors)) alert_ui(sprintf(
@@ -1478,16 +1508,20 @@ response_analysis_server <- function(
       )
     }
     output$download_steps <- csv_download("walz-extracted-steps.csv", function() {
-      shiny::req(result()); result()$steps
+      shiny::req(result())
+      result()$steps
     })
     output$download_predictions <- csv_download("walz-model-predictions.csv", function() {
-      shiny::req(result(), identical(result()$model$status, "success")); result()$model$grid
+      shiny::req(result(), identical(result()$model$status, "success"))
+      result()$model$grid
     })
     output$download_optima <- csv_download("walz-optima.csv", function() {
-      shiny::req(result(), identical(result()$model$status, "success")); result()$model$optima$all
+      shiny::req(result(), identical(result()$model$status, "success"))
+      result()$model$optima$all
     })
     output$download_diagnostics <- csv_download("walz-model-diagnostics.csv", function() {
-      shiny::req(result(), identical(result()$model$status, "success")); result()$model$diagnostics
+      shiny::req(result(), identical(result()$model$status, "success"))
+      result()$model$diagnostics
     })
   })
 }

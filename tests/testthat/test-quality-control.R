@@ -131,6 +131,28 @@ test_that("QC manual selection preserves the requested run order", {
   expect_true(any(grepl("species unavailable", names(choices), fixed = TRUE)))
 })
 
+test_that("QC preparation invalidates only changed Drive file versions", {
+  records <- data.frame(
+    id = c("a", "b"),
+    modified_iso = c("2026-08-01T10:00:00Z", "2026-08-01T11:00:00Z"),
+    stringsAsFactors = FALSE
+  )
+  prepared <- list(
+    a = list(record = records[1, , drop = FALSE], error = NULL),
+    b = list(record = records[2, , drop = FALSE], error = "parse failure")
+  )
+
+  expect_equal(qc_prepared_count(prepared, records), 2L)
+  expect_equal(qc_failed_count(prepared, records), 1L)
+  expect_true(qc_entry_matches_record(prepared$a, records[1, , drop = FALSE]))
+
+  changed <- records
+  changed$modified_iso[[1]] <- "2026-08-01T12:00:00Z"
+  expect_false(qc_entry_matches_record(prepared$a, changed[1, , drop = FALSE]))
+  expect_equal(qc_prepared_count(prepared, changed), 1L)
+  expect_equal(qc_failed_count(prepared, changed), 1L)
+})
+
 test_that("QC selected-run control updates only when choices or selection change", {
   catalog <- data.frame(run_id = c("run-a", "run-b"), stringsAsFactors = FALSE)
   initial <- qc_selected_run_control_state(catalog, NULL, character())
@@ -196,4 +218,31 @@ test_that("QC raw audit shows three-minute means and SD bars for A and PPFD", {
   expect_true(all(vapply(mean_traces, function(trace) trace$line$width == 6, logical(1))))
   expect_equal(as.numeric(error_traces[[1]]$error_y$array), summary$A_sd)
   expect_equal(as.numeric(error_traces[[2]]$error_y$array), summary$PPFD_sd)
+})
+
+test_that("QC audit values are compact and missing values are explicit", {
+  summary <- data.frame(
+    step_id = c(1L, 2L), PPFD_mean = c(100.123, NA),
+    A_mean = c(1.23456, 2), A_sd = c(0.0503393326297748, NA),
+    A_slope = c(-0.012345, 0), n_window = c(181L, NA),
+    coverage = c(1, NA), window_complete = c(TRUE, NA),
+    warning = c("", NA), stringsAsFactors = FALSE
+  )
+  display <- format_qc_audit_table(summary)
+
+  expect_equal(display$PPFD_mean, c("100.1", "—"))
+  expect_equal(display$A_mean, c("1.235", "2.000"))
+  expect_equal(display$A_sd, c("0.050", "—"))
+  expect_equal(display$A_slope, c("-0.0123", "0.0000"))
+  expect_equal(display$coverage, c("100%", "—"))
+  expect_equal(display$window_complete, c("Yes", "—"))
+  expect_equal(display$warning, c("—", "—"))
+})
+
+test_that("QC metadata stays collapsed until requested", {
+  html <- htmltools::renderTags(qc_main_ui("qc"))$html
+  position <- regexpr("Metadata for plotted runs", html, fixed = TRUE)[[1]]
+  panel <- substr(html, position, position + 700L)
+  expect_match(panel, "accordion-button collapsed", fixed = TRUE)
+  expect_match(panel, "aria-expanded=\"false\"", fixed = TRUE)
 })

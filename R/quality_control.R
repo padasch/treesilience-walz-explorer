@@ -439,6 +439,46 @@ make_qc_audit_plot <- function(entry) {
     )
 }
 
+format_qc_audit_table <- function(summary) {
+  if (is.null(summary) || nrow(summary) == 0L) return(data.frame())
+
+  fixed <- function(values, digits) {
+    values <- suppressWarnings(as.numeric(values))
+    ifelse(
+      is.finite(values),
+      formatC(values, format = "f", digits = digits),
+      "—"
+    )
+  }
+  integers <- function(values) {
+    values <- suppressWarnings(as.integer(values))
+    ifelse(is.na(values), "—", as.character(values))
+  }
+  warnings <- trimws(as.character(summary$warning))
+  warnings[is.na(warnings) | !nzchar(warnings)] <- "—"
+
+  data.frame(
+    step_id = integers(summary$step_id),
+    PPFD_mean = fixed(summary$PPFD_mean, 1L),
+    A_mean = fixed(summary$A_mean, 3L),
+    A_sd = fixed(summary$A_sd, 3L),
+    A_slope = fixed(summary$A_slope, 4L),
+    n_window = integers(summary$n_window),
+    coverage = ifelse(
+      is.finite(summary$coverage),
+      sprintf("%.0f%%", 100 * summary$coverage),
+      "—"
+    ),
+    window_complete = ifelse(
+      is.na(summary$window_complete),
+      "—",
+      ifelse(summary$window_complete, "Yes", "No")
+    ),
+    warning = warnings,
+    stringsAsFactors = FALSE
+  )
+}
+
 quality_metadata_table_ui <- function(catalog, title = "Runs in this view") {
   if (is.null(catalog) || nrow(catalog) == 0L) {
     return(alert_ui("No runs are in the current view.", "info"))
@@ -498,6 +538,39 @@ manual_qc_catalog <- function(catalog, selected_ids) {
   }
   positions <- match(selected_ids, as.character(catalog$id))
   catalog[positions[!is.na(positions)], , drop = FALSE]
+}
+
+qc_record_version_key <- function(record) {
+  modified <- if ("modified_iso" %in% names(record)) {
+    as.character(record$modified_iso[[1]])
+  } else if ("modified_time" %in% names(record)) {
+    as.character(record$modified_time[[1]])
+  } else {
+    ""
+  }
+  paste(as.character(record$id[[1]]), modified, sep = "@")
+}
+
+qc_entry_matches_record <- function(entry, record) {
+  !is.null(entry) && !is.null(entry$record) &&
+    identical(qc_record_version_key(entry$record), qc_record_version_key(record))
+}
+
+qc_prepared_count <- function(prepared, records) {
+  if (is.null(records) || nrow(records) == 0L) return(0L)
+  sum(vapply(seq_len(nrow(records)), function(index) {
+    record <- records[index, , drop = FALSE]
+    qc_entry_matches_record(prepared[[as.character(record$id[[1]])]], record)
+  }, logical(1)))
+}
+
+qc_failed_count <- function(prepared, records) {
+  if (is.null(records) || nrow(records) == 0L) return(0L)
+  sum(vapply(seq_len(nrow(records)), function(index) {
+    record <- records[index, , drop = FALSE]
+    entry <- prepared[[as.character(record$id[[1]])]]
+    qc_entry_matches_record(entry, record) && !is.null(entry$error)
+  }, logical(1)))
 }
 
 qc_selected_run_control_state <- function(catalog, current_run, previous_choices) {
@@ -633,6 +706,7 @@ qc_main_ui <- function(id) {
       shiny::uiOutput(ns("audit_table"))
     ),
     bslib::accordion(
+      open = FALSE,
       bslib::accordion_panel(
         "Metadata for plotted runs",
         shiny::uiOutput(ns("metadata_table"))
@@ -651,6 +725,7 @@ quality_control_server <- function(
     prepared <- shiny::reactiveVal(list())
     progress <- shiny::reactiveVal(list(done = 0L, total = 0L, loading = FALSE, error = NULL))
     started <- shiny::reactiveVal(FALSE)
+    loading_keys <- shiny::reactiveVal(character())
     manual_choice_signature <- shiny::reactiveVal(character())
     selected_run_choice_values <- shiny::reactiveVal(character())
     selected_run_id <- shiny::reactiveVal("")
@@ -707,6 +782,44 @@ quality_control_server <- function(
       list(record = record, value = parsed, extraction = extraction, error = NULL)
     }
 
+    update_loading_progress <- function(error = NULL) {
+      records <- measurements()
+      total <- if (is.null(records)) 0L else nrow(records)
+      current_keys <- if (total == 0L) character() else vapply(
+        seq_len(total),
+        function(index) qc_record_version_key(records[index, , drop = FALSE]),
+        character(1)
+      )
+      active_keys <- intersect(loading_keys(), current_keys)
+      loading_keys(active_keys)
+      state <- prepared()
+      failure_messages <- unlist(lapply(seq_len(total), function(index) {
+        record <- records[index, , drop = FALSE]
+        entry <- state[[as.character(record$id[[1]])]]
+        if (!qc_entry_matches_record(entry, record) || is.null(entry$error)) {
+          return(character())
+        }
+        as.character(entry$error)
+      }))
+      messages <- Filter(nzchar, c(failure_messages, error))
+      done <- qc_prepared_count(state, records)
+      progress(list(
+        done = done,
+        total = total,
+        loading = length(active_keys) > 0L || done < total,
+        error = if (length(messages)) paste(unique(messages), collapse = "; ") else NULL
+      ))
+    }
+
+    finish_batch <- function(batch) {
+      batch_keys <- vapply(
+        seq_len(nrow(batch)),
+        function(index) qc_record_version_key(batch[index, , drop = FALSE]),
+        character(1)
+      )
+      loading_keys(setdiff(loading_keys(), batch_keys))
+    }
+
     load_batch <- function(batch) {
       promise <- promises::future_promise({
         configure_drive_access("")
@@ -724,20 +837,19 @@ quality_control_server <- function(
             )
           }
           prepared(state)
-          status <- progress()
-          status$done <- min(status$total, status$done + nrow(batch))
-          status$loading <- status$done < status$total
-          progress(status)
+          finish_batch(batch)
+          update_loading_progress()
         },
         onRejected = function(error) {
-          status <- progress()
-          status$done <- min(status$total, status$done + nrow(batch))
-          status$loading <- status$done < status$total
-          status$error <- paste(
-            Filter(nzchar, c(status$error, conditionMessage(error))),
-            collapse = "; "
-          )
-          progress(status)
+          message <- conditionMessage(error)
+          state <- prepared()
+          for (index in seq_len(nrow(batch))) {
+            record <- batch[index, , drop = FALSE]
+            state[[record$id[[1]]]] <- prepare_entry(record, error = message)
+          }
+          prepared(state)
+          finish_batch(batch)
+          update_loading_progress(message)
         }
       )
       invisible(NULL)
@@ -745,26 +857,39 @@ quality_control_server <- function(
 
     start_loading <- function() {
       records <- measurements()
-      if (is.null(records) || nrow(records) == 0L || isTRUE(started())) return()
+      if (is.null(records) || nrow(records) == 0L) return()
       started(TRUE)
       ensure_background_workers(config$background_workers)
       state <- prepared()
-      pending <- list()
+      active_keys <- loading_keys()
+      pending <- integer()
       for (index in seq_len(nrow(records))) {
         record <- records[index, , drop = FALSE]
+        id <- as.character(record$id[[1]])
+        key <- qc_record_version_key(record)
+        if (qc_entry_matches_record(state[[id]], record) || key %in% active_keys) {
+          next
+        }
         cached <- get_remote_cached("measurement", record)
         if (!is.null(cached)) {
-          state[[record$id[[1]]]] <- prepare_entry(record, cached)
+          state[[id]] <- prepare_entry(record, cached)
         } else {
           pending <- c(pending, index)
         }
       }
       prepared(state)
-      pending_records <- records[unlist(pending), , drop = FALSE]
-      progress(list(
-        done = nrow(records) - nrow(pending_records), total = nrow(records),
-        loading = nrow(pending_records) > 0L, error = NULL
-      ))
+
+      pending_records <- records[pending, , drop = FALSE]
+      if (nrow(pending_records) > 0L) {
+        pending_keys <- vapply(
+          seq_len(nrow(pending_records)),
+          function(index) qc_record_version_key(pending_records[index, , drop = FALSE]),
+          character(1)
+        )
+        loading_keys(unique(c(loading_keys(), pending_keys)))
+      }
+      update_loading_progress()
+
       if (nrow(pending_records) > 0L) {
         groups <- split(
           seq_len(nrow(pending_records)),
@@ -779,22 +904,37 @@ quality_control_server <- function(
     shiny::observeEvent(active(), {
       if (isTRUE(active())) start_loading()
     }, ignoreInit = FALSE)
+    shiny::observeEvent(measurements(), {
+      if (isTRUE(active())) start_loading()
+    }, ignoreInit = TRUE)
 
     output$progress <- shiny::renderUI({
       state <- progress()
-      if (!is.null(state$error)) return(alert_ui(state$error, "danger"))
       if (!isTRUE(started())) return(alert_ui("Preparing Quality Control when this tab opens …", "info"))
       if (isTRUE(state$loading)) {
-        return(shiny::div(
-          class = "walz-progress",
-          shiny::div(class = "progress", shiny::div(
-            class = "progress-bar", role = "progressbar",
-            style = sprintf("width: %.1f%%", 100 * state$done / max(1, state$total))
-          )),
-          shiny::p(sprintf("%d of %d runs prepared", state$done, state$total))
+        return(shiny::tagList(
+          shiny::div(
+            class = "walz-progress", `aria-live` = "polite",
+            shiny::div(class = "progress", shiny::div(
+              class = "progress-bar", role = "progressbar",
+              `aria-valuemin` = 0, `aria-valuemax` = state$total,
+              `aria-valuenow` = state$done,
+              style = sprintf("width: %.1f%%", 100 * state$done / max(1, state$total))
+            )),
+            shiny::p(sprintf("%d of %d runs checked", state$done, state$total))
+          ),
+          if (!is.null(state$error)) alert_ui(state$error, "warning")
         ))
       }
-      alert_ui(sprintf("%d runs prepared and cached for this process.", state$done), "info")
+      failures <- qc_failed_count(prepared(), measurements())
+      shiny::tagList(
+        alert_ui(sprintf(
+          "%d runs ready%s and cached for this process.",
+          max(0L, state$done - failures),
+          if (failures == 0L) "" else sprintf("; %d failed", failures)
+        ), "info"),
+        if (!is.null(state$error)) alert_ui(state$error, "warning")
+      )
     })
 
     quality_levels <- c("good", "medium", "bad", "unassessed")
@@ -828,6 +968,23 @@ quality_control_server <- function(
 
     output$overview_sections <- shiny::renderUI({
       current_catalog <- scoped_catalog()
+      load_state <- progress()
+      if (isTRUE(load_state$loading)) {
+        return(shiny::tagList(lapply(quality_levels, function(quality) {
+          catalog_count <- sum(current_catalog$quality == quality)
+          bslib::card(
+            class = paste("qc-quality-section", paste0("qc-quality-", quality)),
+            bslib::card_header(sprintf(
+              "%s (%d run%s)", quality_labels[[quality]], catalog_count,
+              if (catalog_count == 1L) "" else "s"
+            )),
+            alert_ui(
+              "Preparing this section. Its chart will appear when all runs have been checked.",
+              "info"
+            )
+          )
+        })))
+      }
       current_data <- quality_data()
       columns <- qc_facet_columns(input$facet_columns)
       shiny::tagList(lapply(quality_levels, function(quality) {
@@ -863,13 +1020,27 @@ quality_control_server <- function(
     })
 
     output$overview_warnings <- shiny::renderUI({
+      if (isTRUE(progress()$loading)) return(NULL)
       warnings <- unique(unlist(lapply(quality_data(), `[[`, "warnings")))
       if (isTRUE(input$normalize_a)) {
         warnings <- c(warnings, unlist(lapply(
           quality_data(), `[[`, "normalization_warnings"
         )))
       }
-      failures <- Filter(function(entry) !is.null(entry$error), prepared())
+      records <- measurements()
+      failures <- if (is.null(records) || nrow(records) == 0L) {
+        list()
+      } else {
+        Filter(Negate(is.null), lapply(seq_len(nrow(records)), function(index) {
+          record <- records[index, , drop = FALSE]
+          entry <- prepared()[[as.character(record$id[[1]])]]
+          if (qc_entry_matches_record(entry, record) && !is.null(entry$error)) {
+            entry
+          } else {
+            NULL
+          }
+        }))
+      }
       if (length(failures) > 0L) {
         failure_labels <- vapply(failures, function(entry) {
           sprintf("%s (%s)", entry$record$name[[1]], entry$error)
@@ -950,6 +1121,13 @@ quality_control_server <- function(
       selected <- selected_catalog()
       selected_id <- if (nrow(selected) == 1L) as.character(selected$id[[1]]) else ""
       candidate <- if (nzchar(selected_id)) prepared()[[selected_id]] else NULL
+      if (!is.null(candidate)) {
+        records <- measurements()
+        record <- records[as.character(records$id) == selected_id, , drop = FALSE]
+        if (nrow(record) != 1L || !qc_entry_matches_record(candidate, record)) {
+          candidate <- NULL
+        }
+      }
       previous <- selected_entry_state()
       if (!identical(previous$id, selected_id) || !identical(previous$value, candidate)) {
         selected_entry_state(list(id = selected_id, value = candidate))
@@ -984,14 +1162,17 @@ quality_control_server <- function(
     output$audit_table <- shiny::renderUI({
       entry <- selected_entry()
       if (is.null(entry) || !is.null(entry$error)) {
-        return(if (!is.null(entry$error)) alert_ui(entry$error, "danger") else NULL)
+        return(if (!is.null(entry$error)) {
+          alert_ui(entry$error, "danger")
+        } else {
+          alert_ui("Preparing the selected run audit …", "info")
+        })
       }
       table <- entry$extraction$summary[, c(
         "step_id", "PPFD_mean", "A_mean", "A_sd", "A_slope",
         "n_window", "coverage", "window_complete", "warning"
       ), drop = FALSE]
-      table$coverage <- sprintf("%.0f%%", 100 * table$coverage)
-      table$window_complete <- ifelse(table$window_complete, "Yes", "No")
+      table <- format_qc_audit_table(table)
       shiny::div(class = "full-metadata-scroll", shiny::tags$table(
         class = "run-metadata-table",
         shiny::tags$thead(shiny::tags$tr(lapply(

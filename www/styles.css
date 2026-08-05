@@ -529,10 +529,6 @@ body {
   margin: 0.25rem 1rem 0;
 }
 
-.plotly.html-widget {
-  min-height: 600px;
-}
-
 .quality-control-tab,
 .response-analysis-tab {
   padding: 0.15rem;

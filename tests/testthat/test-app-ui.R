@@ -31,6 +31,10 @@ test_that("multi-run controls, metadata, plots, and protocols stay synchronized"
   expect_match(page_html, "detail_accordion", fixed = TRUE)
   expect_match(page_html, "metadata_details", fixed = TRUE)
   expect_match(page_html, "protocol_details", fixed = TRUE)
+  detail_start <- regexpr("id=\"detail_accordion\"", page_html, fixed = TRUE)[[1]]
+  detail_html <- substr(page_html, detail_start, detail_start + 1400L)
+  expect_match(detail_html, "accordion-button collapsed", fixed = TRUE)
+  expect_match(detail_html, "aria-expanded=\"false\"", fixed = TRUE)
   expect_gt(
     regexpr("detail_accordion", page_html, fixed = TRUE)[[1]],
     regexpr("plot_view", page_html, fixed = TRUE)[[1]]
@@ -77,6 +81,18 @@ test_that("multi-run controls, metadata, plots, and protocols stay synchronized"
   expect_false(grepl("full curated", page_html, ignore.case = TRUE))
   expect_false(grepl("Local analysis", page_html, fixed = TRUE))
   expect_match(page_html, "value=\"good\" checked", fixed = TRUE)
+  expect_false(grepl(
+    ".plotly.html-widget {\n  min-height: 600px;",
+    paste(readLines("www/styles.css", warn = FALSE), collapse = "\n"),
+    fixed = TRUE
+  ))
+
+  refreshed <- as.POSIXct("2026-08-05 07:09:49", tz = "UTC")
+  expect_equal(
+    app_environment$format_source_refresh_time(refreshed, "Europe/Zurich"),
+    "5 Aug 2026, 09:09 CEST"
+  )
+  expect_equal(app_environment$format_source_refresh_time(NULL), "—")
 
   parsed <- dew_point_fixture()
   modified <- as.POSIXct("2026-07-27 16:27:42", tz = "UTC")
