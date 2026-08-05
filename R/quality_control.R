@@ -928,11 +928,14 @@ quality_control_server <- function(
       }
       failures <- qc_failed_count(prepared(), measurements())
       shiny::tagList(
-        alert_ui(sprintf(
-          "%d runs ready%s and cached for this process.",
-          max(0L, state$done - failures),
-          if (failures == 0L) "" else sprintf("; %d failed", failures)
-        ), "info"),
+        alert_ui(if (failures == 0L) {
+          sprintf("%d runs ready and cached for this process.", state$done)
+        } else {
+          sprintf(
+            "%d runs ready; %d failed. Results are cached for this process.",
+            max(0L, state$done - failures), failures
+          )
+        }, "info"),
         if (!is.null(state$error)) alert_ui(state$error, "warning")
       )
     })
