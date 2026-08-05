@@ -211,7 +211,12 @@ make_qc_timeseries_fixture <- function() {
     ),
     catalog = data.frame(
       id = c("a", "b"), run_id = c("run-positive", "run-negative"),
-      quality = c("good", "bad"), stringsAsFactors = FALSE
+      quality = c("good", "bad"),
+      walz_number = c("1", "2"),
+      target_tcuv = c("24", "18"),
+      xibox_temperature = c("26", "20"),
+      xibox_light = c("9999", "875"),
+      stringsAsFactors = FALSE
     )
   )
 }
@@ -229,37 +234,48 @@ test_that("QC timeseries preparation retains raw A and entirely negative runs", 
   expect_equal(qc_display_run_ids(prepared, FALSE), prepared$run_ids)
   expect_equal(qc_display_run_ids(prepared, TRUE), "run-positive")
   expect_match(prepared$normalization_warnings, "run-negative has no positive A maximum")
+  expect_identical(
+    unname(prepared$facet_labels[["run-positive"]]),
+    paste0(
+      "run-positive\n",
+      "(W#: 1 (dimmer), WTemp: 24°C, XTemp: 26°C, XLight: 9999 PPFD)"
+    )
+  )
 })
 
-test_that("QC timeseries facets link run titles to the metadata sheet", {
+test_that("QC facet titles show settings without links and use a fixed 180-minute axis", {
+  expect_identical(qc_walz_number_label("1.0"), "1 (dimmer)")
+  expect_identical(qc_walz_number_label("2"), "2 (brighter)")
   fixture <- make_qc_timeseries_fixture()
   prepared <- prepare_qc_timeseries_data(fixture$prepared, fixture$catalog)
-  widget <- make_qc_timeseries_plot(
-    prepared, columns = 2L, metadata_sheet_id = "sheet-test"
-  )
+  widget <- make_qc_timeseries_plot(prepared, columns = 2L)
   annotations <- widget$x$layout$annotations
-  linked <- Filter(function(annotation) {
-    isTRUE(annotation$captureevents) && grepl("<a href=", annotation$text, fixed = TRUE)
-  }, annotations)
+  annotation_text <- vapply(annotations, function(annotation) {
+    if (is.null(annotation$text)) "" else as.character(annotation$text)
+  }, character(1))
 
   expect_s3_class(widget, "plotly")
-  expect_length(linked, 2L)
-  expect_setequal(vapply(linked, `[[`, character(1), "name"), prepared$run_ids)
-  expect_true(all(vapply(linked, function(annotation) {
-    grepl("docs.google.com/spreadsheets/d/sheet-test/edit", annotation$text, fixed = TRUE)
-  }, logical(1))))
-  expect_true(all(c("plotly_click", "plotly_clickannotation") %in% widget$x$shinyEvents))
+  expect_true(any(grepl("run-positive", annotation_text, fixed = TRUE)))
+  expect_true(any(grepl("W#: 1 (dimmer)", annotation_text, fixed = TRUE)))
+  expect_true(any(grepl("W#: 2 (brighter)", annotation_text, fixed = TRUE)))
+  expect_false(any(grepl("<a href=", annotation_text, fixed = TRUE)))
+  expect_true("plotly_click" %in% widget$x$shinyEvents)
 
   built <- suppressMessages(plotly::plotly_build(widget))
   trace_keys <- unique(unlist(lapply(built$x$data, `[[`, "key")))
   expect_setequal(as.character(trace_keys), prepared$run_ids)
+  x_axes <- built$x$layout[grepl("^xaxis", names(built$x$layout))]
+  expect_true(length(x_axes) >= 2L)
+  expect_true(all(vapply(x_axes, function(axis) {
+    isTRUE(all.equal(as.numeric(axis$range), c(0, 180)))
+  }, logical(1))))
 })
 
 test_that("QC normalization uses each run's positive maximum and defaults remain raw", {
   fixture <- make_qc_timeseries_fixture()
   prepared <- prepare_qc_timeseries_data(fixture$prepared, fixture$catalog)
   normalized <- make_qc_timeseries_plot(
-    prepared, columns = 2L, normalized = TRUE, metadata_sheet_id = "sheet-test"
+    prepared, columns = 2L, normalized = TRUE
   )
   built <- suppressMessages(plotly::plotly_build(normalized))
   trace_keys <- unique(unlist(lapply(built$x$data, `[[`, "key")))

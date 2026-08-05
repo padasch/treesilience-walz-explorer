@@ -111,7 +111,62 @@ qc_empty_timeseries_data <- function() {
       stringsAsFactors = FALSE
     ),
     warnings = character(), normalization_warnings = character(),
-    run_ids = character()
+    run_ids = character(), facet_labels = character()
+  )
+}
+
+qc_setting_value <- function(value, suffix = "") {
+  value <- trimws(as.character(value))
+  if (length(value) == 0L || is.na(value[[1]]) || !nzchar(value[[1]])) {
+    return("—")
+  }
+  value <- value[[1]]
+  numeric_value <- suppressWarnings(as.numeric(value))
+  display <- if (is.finite(numeric_value)) {
+    format(numeric_value, trim = TRUE, scientific = FALSE)
+  } else {
+    value
+  }
+  if (!nzchar(suffix) || grepl(suffix, display, fixed = TRUE)) {
+    display
+  } else {
+    paste0(display, suffix)
+  }
+}
+
+qc_walz_number_label <- function(value) {
+  value <- trimws(as.character(value))
+  if (length(value) == 0L || is.na(value[[1]]) || !nzchar(value[[1]])) {
+    return("—")
+  }
+  value <- value[[1]]
+  numeric_value <- suppressWarnings(as.numeric(value))
+  if (is.finite(numeric_value) && numeric_value == 1) {
+    "1 (dimmer)"
+  } else if (is.finite(numeric_value) && numeric_value == 2) {
+    "2 (brighter)"
+  } else {
+    value
+  }
+}
+
+qc_facet_title <- function(catalog_row) {
+  run_id <- metadata_value(catalog_row, "run_id", "Run unavailable")
+  walz_number <- qc_walz_number_label(metadata_value(
+    catalog_row, "walz_number"
+  ))
+  walz_temperature <- qc_setting_value(metadata_value(
+    catalog_row, "target_tcuv"
+  ), "°C")
+  xibox_temperature <- qc_setting_value(metadata_value(
+    catalog_row, "xibox_temperature"
+  ), "°C")
+  xibox_light <- qc_setting_value(metadata_value(
+    catalog_row, "xibox_light"
+  ), " PPFD")
+  sprintf(
+    "%s\n(W#: %s, WTemp: %s, XTemp: %s, XLight: %s)",
+    run_id, walz_number, walz_temperature, xibox_temperature, xibox_light
   )
 }
 
@@ -126,6 +181,7 @@ prepare_qc_timeseries_data <- function(prepared, catalog) {
   warnings <- character()
   normalization_warnings <- character()
   run_ids <- character()
+  facet_labels <- character()
   for (index in seq_len(nrow(catalog))) {
     run_id <- as.character(catalog$run_id[[index]])
     entry <- prepared[[catalog$id[[index]]]]
@@ -155,6 +211,7 @@ prepare_qc_timeseries_data <- function(prepared, catalog) {
       ))
     }
     run_ids <- c(run_ids, run_id)
+    facet_labels[[run_id]] <- qc_facet_title(catalog[index, , drop = FALSE])
     raw_rows[[run_id]] <- data.frame(
       run_id = run_id,
       elapsed_minutes = elapsed[keep],
@@ -203,7 +260,8 @@ prepare_qc_timeseries_data <- function(prepared, catalog) {
     raw = raw_data, windows = window_data,
     warnings = unique(warnings),
     normalization_warnings = unique(normalization_warnings),
-    run_ids = run_ids
+    run_ids = run_ids,
+    facet_labels = facet_labels[run_ids]
   )
 }
 
@@ -232,15 +290,10 @@ qc_timeseries_plot_height <- function(run_count, columns) {
   max(380L, 245L * rows + 105L)
 }
 
-qc_metadata_sheet_url <- function(sheet_id) {
-  sprintf("https://docs.google.com/spreadsheets/d/%s/edit", sheet_id)
-}
-
 make_qc_timeseries_plot <- function(
     prepared,
     columns = 2L,
-    normalized = FALSE,
-    metadata_sheet_id = WALZ_DEFAULT_METADATA_SHEET_ID) {
+    normalized = FALSE) {
   if (is.null(prepared) || nrow(prepared$raw) == 0L) {
     return(plotly::plotly_empty(type = "scatter", mode = "lines"))
   }
@@ -261,6 +314,17 @@ make_qc_timeseries_plot <- function(
   window_data$A_sd_display <- if (isTRUE(normalized)) {
     window_data$A_sd_normalized
   } else window_data$A_sd
+  facet_labels <- prepared$facet_labels[display_runs]
+  raw_data$facet_label <- factor(
+    unname(facet_labels[as.character(raw_data$run_id)]),
+    levels = unname(facet_labels)
+  )
+  if (nrow(window_data) > 0L) {
+    window_data$facet_label <- factor(
+      unname(facet_labels[as.character(window_data$run_id)]),
+      levels = unname(facet_labels)
+    )
+  }
   y_label <- qc_a_axis_label(normalized)
   raw_line_layer <- suppressWarnings(ggplot2::geom_line(
     ggplot2::aes(text = hover, key = run_id),
@@ -300,8 +364,10 @@ make_qc_timeseries_plot <- function(
       linewidth = 0.55, width = 0.5, na.rm = TRUE
     ) +
     ggplot2::facet_wrap(
-      stats::as.formula("~run_id"), ncol = columns, scales = "free_x"
+      stats::as.formula("~facet_label"), ncol = columns, scales = "fixed"
     ) +
+    ggplot2::scale_x_continuous(breaks = seq(0, 180, by = 30)) +
+    ggplot2::coord_cartesian(xlim = c(0, 180), expand = FALSE) +
     ggplot2::labs(
       x = "Elapsed time from run start (minutes)",
       y = y_label
@@ -312,7 +378,9 @@ make_qc_timeseries_plot <- function(
       panel.grid.minor = ggplot2::element_blank(),
       panel.grid.major = ggplot2::element_line(colour = "#e7ebe7", linewidth = 0.3),
       strip.background = ggplot2::element_rect(fill = "#eef4ed", colour = NA),
-      strip.text = ggplot2::element_text(colour = "#006d4c", face = "bold"),
+      strip.text = ggplot2::element_text(
+        colour = "#006d4c", face = "bold", size = 8.5, lineheight = 1.05
+      ),
       axis.title = ggplot2::element_text(colour = "#34443a"),
       axis.text = ggplot2::element_text(colour = "#4b5563")
     )
@@ -320,29 +388,11 @@ make_qc_timeseries_plot <- function(
   widget <- suppressWarnings(plotly::ggplotly(
     plot, dynamicTicks = TRUE, tooltip = "text", source = "qc_overview"
   ))
-  sheet_url <- qc_metadata_sheet_url(metadata_sheet_id)
-  annotations <- widget$x$layout$annotations
-  if (length(annotations)) {
-    for (index in seq_along(annotations)) {
-      label <- as.character(annotations[[index]]$text)
-      if (!label %in% display_runs) next
-      annotations[[index]]$text <- sprintf(
-        "<a href=\"%s\" target=\"_blank\">%s ↗</a>",
-        sheet_url, htmltools::htmlEscape(label)
-      )
-      annotations[[index]]$name <- label
-      annotations[[index]]$captureevents <- TRUE
-      annotations[[index]]$hovertext <- "Open the metadata sheet to review this run"
-      annotations[[index]]$font$color <- "#006d4c"
-    }
-    widget$x$layout$annotations <- annotations
-  }
   widget <- plotly::layout(
     widget, hovermode = "closest", showlegend = FALSE,
-    margin = list(l = 90, r = 25, t = 35, b = 70)
+    margin = list(l = 90, r = 25, t = 55, b = 70)
   )
-  widget <- plotly::event_register(widget, "plotly_click")
-  plotly::event_register(widget, "plotly_clickannotation")
+  plotly::event_register(widget, "plotly_click")
 }
 
 make_qc_audit_plot <- function(entry) {
@@ -770,7 +820,7 @@ qc_main_ui <- function(id) {
           "and can divide each run by its positive maximum. Pale bands mark the ",
           "three-minute extraction windows; thick green segments show their means and the ",
           "lighter vertical bars show mean ± 1 SD. Click a line to open its detailed audit, ",
-          "or click a run-ID title to open the metadata Sheet."
+          "while each facet title identifies the run and its WALZ/XiBox settings."
         )
       ),
       shiny::uiOutput(ns("overview_warnings"))
@@ -1156,8 +1206,7 @@ quality_control_server <- function(
           make_qc_timeseries_plot(
             current,
             columns = qc_facet_columns(input$facet_columns),
-            normalized = isTRUE(input$normalize_a),
-            metadata_sheet_id = config$metadata_sheet_id
+            normalized = isTRUE(input$normalize_a)
           )
         })
       })
@@ -1287,21 +1336,6 @@ quality_control_server <- function(
       } else if ("customdata" %in% names(clicked)) {
         as.character(clicked$customdata[[1]])
       } else ""
-      if (nzchar(run_id)) {
-        selected_run_id(run_id)
-        shiny::updateSelectizeInput(session, "selected_run", selected = run_id)
-      }
-    }, ignoreInit = TRUE)
-
-    qc_annotation_click <- shiny::reactive({
-      shiny::req(active())
-      suppressWarnings(plotly::event_data(
-        "plotly_clickannotation", source = "qc_overview"
-      ))
-    })
-    shiny::observeEvent(qc_annotation_click(), {
-      clicked <- qc_annotation_click()
-      run_id <- if ("name" %in% names(clicked)) as.character(clicked$name[[1]]) else ""
       if (nzchar(run_id)) {
         selected_run_id(run_id)
         shiny::updateSelectizeInput(session, "selected_run", selected = run_id)
