@@ -146,7 +146,6 @@ test_that("QC prepares only the requested scope and never starts automatically",
 
       session$setInputs(
         selection_mode = "filters",
-        species = character(),
         plant_ids = character(),
         qualities = c("good", "medium", "bad", "unassessed"),
         date_range = as.Date(c("2026-07-01", "2026-08-05"))
@@ -269,6 +268,18 @@ test_that("QC facet titles show settings without links and use a fixed 180-minut
   expect_true(all(vapply(x_axes, function(axis) {
     isTRUE(all.equal(as.numeric(axis$range), c(0, 180)))
   }, logical(1))))
+  line_traces <- Filter(function(trace) {
+    identical(trace$type, "scatter") && grepl("lines", trace$mode, fixed = TRUE)
+  }, built$x$data)
+  raw_widths <- vapply(Filter(function(trace) {
+    identical(trace$line$color, "rgba(86,97,107,1)")
+  }, line_traces), function(trace) trace$line$width, numeric(1))
+  mean_widths <- vapply(Filter(function(trace) {
+    identical(trace$line$color, "rgba(27,158,119,1)")
+  }, line_traces), function(trace) trace$line$width, numeric(1))
+  expect_true(length(raw_widths) > 0L)
+  expect_true(length(mean_widths) > 0L)
+  expect_true(all(mean_widths %in% raw_widths))
 })
 
 test_that("QC normalization uses each run's positive maximum and defaults remain raw", {

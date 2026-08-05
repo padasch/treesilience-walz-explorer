@@ -1,4 +1,5 @@
 .walz_future_initialized <- FALSE
+QC_TIMESERIES_LINEWIDTH <- 0.38
 
 ensure_background_workers <- function(workers = 2L) {
   if (!isTRUE(.walz_future_initialized)) {
@@ -328,7 +329,7 @@ make_qc_timeseries_plot <- function(
   y_label <- qc_a_axis_label(normalized)
   raw_line_layer <- suppressWarnings(ggplot2::geom_line(
     ggplot2::aes(text = hover, key = run_id),
-    colour = "#56616b", linewidth = 0.38, na.rm = TRUE
+    colour = "#56616b", linewidth = QC_TIMESERIES_LINEWIDTH, na.rm = TRUE
   ))
   plot <- ggplot2::ggplot(
     raw_data,
@@ -350,7 +351,8 @@ make_qc_timeseries_plot <- function(
         x = window_start, xend = window_end,
         y = A_display, yend = A_display
       ),
-      inherit.aes = FALSE, colour = mean_colour, linewidth = 1.7,
+      inherit.aes = FALSE, colour = mean_colour,
+      linewidth = QC_TIMESERIES_LINEWIDTH,
       lineend = "round", na.rm = TRUE
     ) +
     ggplot2::geom_errorbar(
@@ -714,7 +716,6 @@ qc_sidebar_ui <- function(id) {
     shiny::conditionalPanel(
       condition = "input.selection_mode === 'filters'",
       ns = ns,
-      shiny::selectizeInput(ns("species"), "Species", choices = character(), multiple = TRUE),
       shiny::selectizeInput(ns("plant_ids"), "Plant IDs", choices = character(), multiple = TRUE),
       shiny::checkboxGroupInput(
         ns("qualities"), "Quality assessment",
@@ -784,11 +785,11 @@ qc_sidebar_ui <- function(id) {
     ),
     bslib::input_switch(
       ns("normalize_a"), "Normalize A by each run's positive maximum",
-      value = FALSE
+      value = TRUE
     ),
     shiny::p(
       class = "control-help",
-      "Off by default: raw A values and units are shown."
+      "On by default so curves can be compared by shape; switch off to show raw A and its units."
     ),
     shiny::p(
       class = "control-help",
@@ -816,9 +817,9 @@ qc_main_ui <- function(id) {
       shiny::p(
         class = "control-help",
         paste0(
-          "Each facet is one measurement run. The sidebar scale switch defaults to original A ",
-          "and can divide each run by its positive maximum. Pale bands mark the ",
-          "three-minute extraction windows; thick green segments show their means and the ",
+          "Each facet is one measurement run. A is divided by that run's positive maximum by ",
+          "default and can be switched back to raw values. Pale bands mark the three-minute ",
+          "extraction windows; green segments show their means and the ",
           "lighter vertical bars show mean ± 1 SD. Click a line to open its detailed audit, ",
           "while each facet title identifies the run and its WALZ/XiBox settings."
         )
@@ -867,9 +868,7 @@ quality_control_server <- function(
     shiny::observe({
       current <- catalog()
       if (nrow(current) == 0L) return()
-      species <- sort(unique(current$species[nzchar(current$species)]))
       plants <- sort(unique(current$plant_id[nzchar(current$plant_id)]))
-      shiny::updateSelectizeInput(session, "species", choices = species, server = TRUE)
       shiny::updateSelectizeInput(session, "plant_ids", choices = plants, server = TRUE)
       manual_choices <- qc_run_choices(current)
       current_ids <- unname(manual_choices)
@@ -893,7 +892,7 @@ quality_control_server <- function(
         return(manual_qc_catalog(current, input$manual_runs))
       }
       filter_run_catalog(
-        current, input$species, input$plant_ids, input$date_range,
+        current, plant_ids = input$plant_ids, date_range = input$date_range,
         qualities = input$qualities
       )
     })
@@ -901,7 +900,6 @@ quality_control_server <- function(
     current_filter_signature <- shiny::reactive({
       qc_selection_signature(
         mode = if (is.null(input$selection_mode)) "filters" else input$selection_mode,
-        species = input$species,
         plant_ids = input$plant_ids,
         date_range = input$date_range,
         qualities = input$qualities,

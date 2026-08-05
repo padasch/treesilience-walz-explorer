@@ -28,13 +28,13 @@ No WALZ measurements, Google credentials, or thesis files are stored in this rep
 ### Quality Control
 
 - Four quality sections: Good, Medium, Bad, and Unassessed
-- A faceted A-timeseries overview for each quality, with a one-to-four-column layout control and an optional per-run positive-maximum normalization switch
-- Raw A is the default so entirely negative or otherwise unusual runs remain visible; normalized mode omits runs without a positive maximum with an explicit warning. Pale bands mark the final-three-minute extraction windows, thick segments mark their means, and error bars show mean ± 1 SD
+- A faceted A-timeseries overview for each quality, with a one-to-four-column layout control and a per-run positive-maximum normalization switch that is on by default
+- Normalized A is the default for comparing curve shape; raw A remains available from the switch so entirely negative or otherwise unusual runs can be inspected. Normalized mode omits runs without a positive maximum with an explicit warning. Pale bands mark the final-three-minute extraction windows, same-weight green segments mark their means, and error bars show mean ± 1 SD
 - Each facet title shows the run ID, WALZ number (`1 (dimmer)` or `2 (brighter)`), WALZ target temperature, XiBox temperature, and XiBox light; titles are display-only, while clicking a timeseries selects its detailed raw audit
 - Every Quality Control facet uses the same 0–180 minute x-axis so shorter runs are immediately apparent
 - A raw audit whose selector always includes every measurement CSV independently of the overview filters; unmatched metadata rows are flagged without hiding the raw data
 - Raw A and PPFD audits with pale extraction windows, thick three-minute mean segments, and lighter mean ± 1 SD bars, plus slope, coverage, completeness, and structural warnings
-- Switchable metadata filters or manual multi-run selection, plus a color-matched metadata table
+- Plant-ID, quality, and date filters or manual multi-run selection, plus a color-matched metadata table; the redundant species filter is omitted because Plant ID already carries the species prefix
 - A default run-date range from 1 July 2026 through the current Europe/Zurich date
 - Explicit **Analyze filtered runs** and **Analyze all runs** actions with run-count progress; opening the tab performs no collection-wide preparation
 - Read-only quality overview; assessments are edited manually in the linked metadata Sheet
