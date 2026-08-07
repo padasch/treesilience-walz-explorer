@@ -2691,7 +2691,7 @@
       "checksum": "eb78baf425164da485100236a1fbfa24"
     },
     "R/drive_data.R": {
-      "checksum": "29df5ece2683ee4c6fecc3b17318a5b4"
+      "checksum": "f31671b38ed8481b3c8a758ecd211b85"
     },
     "R/light_steps.R": {
       "checksum": "e4fe207319733875f224acec4c1b643a"
@@ -2703,10 +2703,10 @@
       "checksum": "b2580539fa9ada79570ee9b276145e76"
     },
     "R/quality_control.R": {
-      "checksum": "7123fb8e226b85a0b19e293584122c0d"
+      "checksum": "550bc8cdb271319b75be46d4216df9cd"
     },
     "R/response_analysis.R": {
-      "checksum": "6a76e884cd199e445266eeb175076e07"
+      "checksum": "9fac5e2b0449fb09ad4ea0f137757bff"
     },
     "R/run_metadata.R": {
       "checksum": "7757434be15ec29f28a08d3175876887"

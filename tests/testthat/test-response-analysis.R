@@ -109,6 +109,28 @@ test_that("first-analysis presets stay species-specific and resolve exact Drive 
   expect_length(resolved$missing, 0L)
 })
 
+test_that("response jobs drop typed Drive IDs before background processing", {
+  records <- data.frame(
+    id = googledrive::as_id(c("b5-drive-id", "o3-drive-id")),
+    name = c("20260806_1243_B5.csv", "20260806_1251_O3.csv"),
+    modified_iso = c("2026-08-06T12:43:00Z", "2026-08-06T12:51:00Z"),
+    stringsAsFactors = FALSE
+  )
+  catalog <- data.frame(
+    id = googledrive::as_id(c("b5-drive-id", "o3-drive-id")),
+    species = c("beech", "oak"), plant_id = c("B5", "O3"),
+    colour = c("#1B9E77", "#D95F02"), stringsAsFactors = FALSE
+  )
+
+  result <- run_response_job(
+    records[0, , drop = FALSE],
+    catalog[0, , drop = FALSE]
+  )
+
+  expect_type(result$selection$id, "character")
+  expect_false(inherits(result$selection$id, "drive_id"))
+})
+
 test_that("manual response selection keeps user order and can include unmatched runs", {
   catalog <- data.frame(
     id = c("a", "b", "c"), run_id = c("run-a", "run-b", "run-c"),

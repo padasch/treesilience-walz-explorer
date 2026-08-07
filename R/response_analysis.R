@@ -371,6 +371,10 @@ run_response_job <- function(
     catalog,
     cached_parsed = list(),
     cached_extractions = list()) {
+  # Background workers do not need googledrive's vctrs wrapper. Normalizing
+  # here also protects callers that provide records from an older live cache.
+  records$id <- plain_drive_ids(records$id)
+  catalog$id <- plain_drive_ids(catalog$id)
   need_extraction <- !records$id %in% names(cached_extractions)
   missing <- records[
     need_extraction & !records$id %in% names(cached_parsed),

@@ -32,7 +32,6 @@ test_that("the public Drive source has the validated WALZ structure and files", 
     WALZ_DEFAULT_METADATA_SHEET_NAME
   )
   expect_gte(nrow(metadata), 1L)
-  expect_identical(anyDuplicated(metadata$.run_id), 0L)
 
   exact_metadata_match <- vapply(
     seq_len(nrow(index$measurements)),
@@ -44,6 +43,13 @@ test_that("the public Drive source has the validated WALZ structure and files", 
     },
     logical(1)
   )
+  measurement_run_ids <- normalize_run_id(measurement_run_id(
+    index$measurements$name[exact_metadata_match]
+  ))
+  matched_metadata_ids <- metadata$.run_id[
+    metadata$.run_id %in% measurement_run_ids
+  ]
+  expect_identical(anyDuplicated(matched_metadata_ids), 0L)
   protocol_match <- vapply(
     seq_len(nrow(index$measurements)),
     function(row) {

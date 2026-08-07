@@ -20,6 +20,32 @@ test_that("remote cache keys include file identity and modification time", {
   expect_equal(calls, 2L)
 })
 
+test_that("Drive listings expose plain character IDs to background workflows", {
+  files <- data.frame(
+    id = googledrive::as_id(c("b5-drive-id", "o3-drive-id")),
+    name = c("20260806_1243_B5.csv", "20260806_1251_O3.csv"),
+    stringsAsFactors = FALSE
+  )
+  files$drive_resource <- list(
+    list(
+      id = "b5-drive-id", name = files$name[[1]],
+      modifiedTime = "2026-08-06T12:43:00.000Z",
+      mimeType = "text/csv", size = "100"
+    ),
+    list(
+      id = "o3-drive-id", name = files$name[[2]],
+      modifiedTime = "2026-08-06T12:51:00.000Z",
+      mimeType = "text/csv", size = "100"
+    )
+  )
+
+  result <- drive_metadata_table(files)
+
+  expect_type(result$id, "character")
+  expect_false(inherits(result$id, "drive_id"))
+  expect_identical(result$id, c("b5-drive-id", "o3-drive-id"))
+})
+
 test_that("temporary loader failures are not cached", {
   clear_remote_cache()
   record <- data.frame(id = "failure", modified_iso = "now")

@@ -1,6 +1,12 @@
 .walz_remote_cache <- new.env(parent = emptyenv())
 .walz_source_cache <- new.env(parent = emptyenv())
 
+plain_drive_ids <- function(ids) {
+  if (is.null(ids)) return(character())
+  if (inherits(ids, "drive_id")) ids <- unclass(ids)
+  as.character(ids)
+}
+
 drive_metadata_table <- function(files) {
   if (nrow(files) == 0L) {
     result <- data.frame(
@@ -29,7 +35,10 @@ drive_metadata_table <- function(files) {
   )
 
   result <- data.frame(
-    id = files$id,
+    # Keep googledrive's typed ID inside the package boundary only. A drive_id
+    # is character-backed, but its vctrs class can fail to cast after the
+    # records are serialized to a background worker.
+    id = plain_drive_ids(files$id),
     name = files$name,
     modified_time = as.POSIXct(
       modified_iso,

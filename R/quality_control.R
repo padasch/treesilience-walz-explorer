@@ -34,7 +34,7 @@ build_run_catalog <- function(measurements, metadata) {
       !tolower(quality_raw) %in% WALZ_QUALITY_SOURCE_LEVELS
     datetime <- run_datetime_from_id(run_id)
     data.frame(
-      id = record$id[[1]],
+      id = plain_drive_ids(record$id)[[1]],
       name = record$name[[1]],
       run_id = run_id,
       modified_iso = record$modified_iso[[1]],
